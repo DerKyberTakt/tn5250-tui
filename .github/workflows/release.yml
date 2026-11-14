@@ -1,0 +1,93 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build and package
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ver="${TAG#v}"
+          name="tn5250-tui_${ver}_${GOOS}_${GOARCH}"
+          mkdir -p "dist/${name}"
+          exe="tn5250-tui"
+          if [ "$GOOS" = windows ]; then exe="tn5250-tui.exe"; fi
+          go build -trimpath -ldflags "-s -w -X main.version=${TAG}" -o "dist/${name}/${exe}" ./cmd/tn5250-tui
+          cp README.md LICENSE "dist/${name}/"
+          cd dist
+          if [ "$GOOS" = windows ]; then
+            (cd "${name}" && zip -q -r "../${name}.zip" .)
+          else
+            tar -C "${name}" -czf "${name}.tar.gz" tn5250-tui README.md LICENSE
+          fi
+          rm -rf "${name}"
+          ls -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asset-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          pattern: asset-*
+          merge-multiple: true
+      - name: checksums
+        run: |
+          cd assets
+          sha256sum *.tar.gz *.zip > SHA256SUMS
+          cat SHA256SUMS
+      - name: release notes from CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          ver="${TAG#v}"
+          awk -v v="$ver" '
+            /^## / { if (found) exit; if (index($0, "## " v) == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Release ${TAG}" > notes.md; fi
+          cat notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: |
+            assets/*.tar.gz
+            assets/*.zip
+            assets/SHA256SUMS

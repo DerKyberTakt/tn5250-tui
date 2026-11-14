@@ -1,0 +1,21 @@
+# build output
+dist/
+/*.exe
+/tn5250-tui
+/fakehost
+
+# runtime files
+tn5250-screen.txt
+*.trace
+*.trace.log
+trace*.txt
+traces/
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# local agent settings
+.claude/

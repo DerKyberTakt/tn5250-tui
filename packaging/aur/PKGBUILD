@@ -1,0 +1,36 @@
+# Maintainer: DerKyberTakt
+#
+# Binary package built from the GitHub release assets.
+# The sha256sums below are placeholders: after bumping pkgver run `updpkgsums`
+# (pacman-contrib) in this directory, then regenerate .SRCINFO with
+# `makepkg --printsrcinfo > .SRCINFO`.
+pkgname=tn5250-tui-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Lightweight 5250 terminal emulator for the console'
+arch=('x86_64' 'aarch64')
+url='https://github.com/DerKyberTakt/tn5250-tui'
+license=('MIT')
+provides=('tn5250-tui')
+conflicts=('tn5250-tui')
+# The release tarballs have no top-level directory, so both architectures would
+# extract over each other; extract by hand in package() instead.
+noextract=("tn5250-tui_${pkgver}_linux_amd64.tar.gz"
+           "tn5250-tui_${pkgver}_linux_arm64.tar.gz")
+source_x86_64=("https://github.com/DerKyberTakt/tn5250-tui/releases/download/v${pkgver}/tn5250-tui_${pkgver}_linux_amd64.tar.gz")
+source_aarch64=("https://github.com/DerKyberTakt/tn5250-tui/releases/download/v${pkgver}/tn5250-tui_${pkgver}_linux_arm64.tar.gz")
+sha256sums_x86_64=('SKIP') # run updpkgsums
+sha256sums_aarch64=('SKIP') # run updpkgsums
+
+package() {
+  local goarch
+  case "$CARCH" in
+    x86_64) goarch=amd64 ;;
+    aarch64) goarch=arm64 ;;
+  esac
+  mkdir -p "$srcdir/unpack"
+  bsdtar -xf "$srcdir/tn5250-tui_${pkgver}_linux_${goarch}.tar.gz" -C "$srcdir/unpack"
+  install -Dm755 "$srcdir/unpack/tn5250-tui" "$pkgdir/usr/bin/tn5250-tui"
+  install -Dm644 "$srcdir/unpack/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$srcdir/unpack/README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
