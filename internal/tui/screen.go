@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/rivo/uniseg"
@@ -66,6 +68,12 @@ type Screen struct {
 	// Highlight colours the source lines of an SEU edit/browse screen (CL, DDS, RPG, SQL)
 	// like the emulators do; the host's colours stay everywhere else.
 	Highlight bool
+	// Watermark is a text drawn in the dim colour on the blank cells of every screen;
+	// WatermarkPos is one of the emulators' positions (center, topLeft, topRight,
+	// bottomLeft, bottomRight, tile; anything else = center).
+	Watermark, WatermarkPos string
+	// DemoLabel, when set, is tiled over the screen in the demo colour (a demo system).
+	DemoLabel string
 
 	scrollX, scrollY int
 
@@ -123,6 +131,75 @@ func (s *Screen) tokens(snap Snapshot) []highlight.Tok {
 	}
 	s.hlSeq, s.hlRows, s.hlCols, s.hlToks = snap.Seq, snap.Rows, snap.Cols, toks
 	return toks
+}
+
+// colDemo is the demo watermark colour (the emulators' demo frame colour).
+var colDemo = tcell.NewRGBColor(0xff, 0x9f, 0x1c)
+
+// drawWatermark writes the watermark (or the demo label, tiled) onto the blank cells of
+// the drawn screen: never over text, a field or a reverse-image area. originX/Y is the
+// terminal position of cell (0,0); the box is x,y,w,h.
+func (s *Screen) drawWatermark(scr tcell.Screen, snap Snapshot, originX, originY, x, y, w, h int) {
+	text, pos, col := s.Watermark, s.WatermarkPos, colDim
+	if s.DemoLabel != "" {
+		text, pos, col = s.DemoLabel, "tile", colDemo
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	runes := []rune(text)
+	n := len(runes)
+	if n > snap.Cols {
+		runes, n = runes[:snap.Cols], snap.Cols
+	}
+	var starts [][2]int // row, col of each copy
+	switch pos {
+	case "tile":
+		step := n + 8
+		for r := 2; r < snap.Rows-1; r += 4 {
+			off := 0
+			if (r/4)%2 == 1 {
+				off = step / 2
+			}
+			for c := off; c+n <= snap.Cols; c += step {
+				starts = append(starts, [2]int{r, c})
+			}
+		}
+	case "topLeft":
+		starts = [][2]int{{1, 1}}
+	case "topRight":
+		starts = [][2]int{{1, snap.Cols - n - 1}}
+	case "bottomLeft":
+		starts = [][2]int{{snap.Rows - 2, 1}}
+	case "bottomRight":
+		starts = [][2]int{{snap.Rows - 2, snap.Cols - n - 1}}
+	default:
+		starts = [][2]int{{snap.Rows / 2, (snap.Cols - n) / 2}}
+	}
+	st := tcell.StyleDefault.Background(colBlack).Foreground(col)
+	for _, p := range starts {
+		r, c0 := p[0], p[1]
+		if r < 0 || r >= snap.Rows || c0 < 0 {
+			continue
+		}
+		for i, ch := range runes {
+			c := c0 + i
+			if c >= snap.Cols {
+				break
+			}
+			cell := snap.At(r, c)
+			a := DecodeAttr(cell.Attr)
+			if cell.InField || a.Reverse || (cell.Ch > ' ' && !a.Nondisplay) {
+				continue
+			}
+			sx, sy := originX+c, originY+r
+			if sx < x || sx >= x+w || sy < y || sy >= y+h {
+				continue
+			}
+			scr.SetContent(sx, sy, ch, nil, st)
+		}
+	}
 }
 
 // NewScreen returns a screen primitive that reads its content from source;
@@ -221,6 +298,7 @@ func (s *Screen) Draw(scr tcell.Screen) {
 			scr.SetContent(sx, sy, ch, nil, st)
 		}
 	}
+	s.drawWatermark(scr, snap, x+ox-s.scrollX, y+oy-s.scrollY, x, y, w, h)
 	if s.HasFocus() {
 		cx := x + ox + snap.Cursor.Col - s.scrollX
 		cy := y + oy + snap.Cursor.Row - s.scrollY

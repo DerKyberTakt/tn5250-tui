@@ -17,7 +17,8 @@ var screenSizes = []string{"27x132", "24x80"}
 // siteInput holds the raw text of a site form.
 type siteInput struct {
 	Name, Host, Port, User, Password, ScreenSize, CodePage, DeviceName string
-	TLS, Trust, Auto                                                   bool
+	TLS, Trust, Auto, Demo                                             bool
+	DemoLabel                                                          string // kept from the site being edited
 }
 
 // toSite validates the input and builds the Site (defaults applied).
@@ -32,6 +33,8 @@ func (in siteInput) toSite() (sites.Site, error) {
 		ScreenSize:          in.ScreenSize,
 		DeviceName:          strings.TrimSpace(in.DeviceName),
 		AutoSignon:          in.Auto,
+		Demo:                in.Demo,
+		DemoLabel:           in.DemoLabel,
 	}
 	if s.Name == "" {
 		return s, errors.New("Name is required")
@@ -100,7 +103,7 @@ func readSiteForm(f *tview.Form) siteInput {
 		User: formText(f, "User"), Password: formText(f, "Password"),
 		CodePage: formText(f, "Code page"), DeviceName: formText(f, "Device name"),
 		TLS: formChecked(f, "TLS"), Trust: formChecked(f, "Trust any certificate"),
-		Auto: formChecked(f, "Auto sign-on"),
+		Auto: formChecked(f, "Auto sign-on"), Demo: formChecked(f, "Demo system"),
 	}
 	if dd, ok := f.GetFormItemByLabel("Screen size").(*tview.DropDown); ok {
 		_, in.ScreenSize = dd.GetCurrentOption()
@@ -123,8 +126,11 @@ func newSiteForm(s sites.Site, onSave func(sites.Site), onCancel func(), onError
 	f.AddInputField("Code page", strconv.Itoa(s.CodePage), 8, tview.InputFieldInteger, nil)
 	f.AddInputField("Device name", s.DeviceName, 12, nil, nil)
 	f.AddCheckbox("Auto sign-on", s.AutoSignon, nil)
+	f.AddCheckbox("Demo system", s.Demo, nil)
 	f.AddButton("Save", func() {
-		site, err := readSiteForm(f).toSite()
+		in := readSiteForm(f)
+		in.DemoLabel = s.DemoLabel
+		site, err := in.toSite()
 		if err != nil {
 			onError(err.Error())
 			return

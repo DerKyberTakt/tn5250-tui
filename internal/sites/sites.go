@@ -28,7 +28,22 @@ type Site struct {
 	CodePage            int    `json:"codePage"`
 	DeviceName          string `json:"deviceName"`
 	AutoSignon          bool   `json:"autoSignon"`
+	// Demo marks a demo/test system: a tiled DEMO watermark and DEMO on the status line
+	// (the emulators' demo mode). DemoLabel replaces the word DEMO.
+	Demo      bool   `json:"demo,omitempty"`
+	DemoLabel string `json:"demoLabel,omitempty"`
 }
+
+// Watermark is a text drawn in a dim colour on the blank parts of the screen.
+type Watermark struct {
+	Text string `json:"text"`
+	// Position is "center" (default), "topLeft", "topRight", "bottomLeft", "bottomRight" or
+	// "tile" (the emulators' names; "custom" draws as "center").
+	Position string `json:"position,omitempty"`
+}
+
+// ColorNames are the 5250 attribute colours a palette entry can override.
+var ColorNames = []string{"green", "white", "red", "turquoise", "yellow", "pink", "blue"}
 
 // Defaults are the settings used where a site (or a host target) leaves a value empty. They
 // are stored in sites.json as "defaults" and edited with the :settings page.
@@ -41,6 +56,14 @@ type Defaults struct {
 	AutoSignon       bool   `json:"autoSignon"`                 // preset for new sites
 	TraceFile        string `json:"traceFile,omitempty"`        // trace every connection to this file
 	KeepAliveSeconds int    `json:"keepAliveSeconds,omitempty"` // 0 = the client's 15 s default
+	// Colors overrides the palette: attribute colour name (see ColorNames) -> "#rrggbb".
+	Colors map[string]string `json:"colors,omitempty"`
+	// Keys overrides the key table with the emulators' key names ("Ctrl+Home", "Alt+F1",
+	// "Shift+Escape") -> engine action; "" unbinds the key. Names the console cannot
+	// deliver are ignored.
+	Keys map[string]string `json:"keys,omitempty"`
+	// Watermark, when set with a text, is drawn on the blank parts of every screen.
+	Watermark *Watermark `json:"watermark,omitempty"`
 }
 
 // UnmarshalJSON starts from the built-in values, so a block without "sourceHighlight" keeps

@@ -3,6 +3,7 @@ package sites
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -105,7 +106,7 @@ func TestDefaultsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.Defaults == nil || *g.Defaults != *f.Defaults {
+	if g.Defaults == nil || !reflect.DeepEqual(*g.Defaults, *f.Defaults) {
 		t.Fatalf("got %+v want %+v", g.Defaults, f.Defaults)
 	}
 }

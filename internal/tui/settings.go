@@ -8,6 +8,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/DerKyberTakt/tn5250-tui/internal/sites"
+	"github.com/DerKyberTakt/tn5250-tui/internal/vscode"
 )
 
 // settingsInput is the raw text of the settings form.
@@ -61,7 +62,7 @@ func readSettingsForm(f *tview.Form) settingsInput {
 }
 
 // newSettingsForm builds the settings form, filled from d.
-func newSettingsForm(d sites.Defaults, onSave func(sites.Defaults), onCancel func(), onError func(string)) *tview.Form {
+func newSettingsForm(d sites.Defaults, onSave func(sites.Defaults), onCancel func(), onError func(string), onImport func()) *tview.Form {
 	f := tview.NewForm()
 	f.AddDropDown("Screen size", screenSizes, sizeIndex(d.ScreenSize), nil)
 	f.AddInputField("Code page", strconv.Itoa(d.CodePage), 8, nil, nil)
@@ -75,6 +76,7 @@ func newSettingsForm(d sites.Defaults, onSave func(sites.Defaults), onCancel fun
 		keep = strconv.Itoa(d.KeepAliveSeconds)
 	}
 	f.AddInputField("Keep-alive seconds", keep, 8, nil, nil)
+	f.AddTextView("Overrides", DescribeOverrides(d), 40, 1, false, false)
 	f.AddButton("Save", func() {
 		nd, err := readSettingsForm(f).toDefaults()
 		if err != nil {
@@ -84,6 +86,9 @@ func newSettingsForm(d sites.Defaults, onSave func(sites.Defaults), onCancel fun
 		onSave(nd)
 	})
 	f.AddButton("Cancel", onCancel)
+	if onImport != nil {
+		f.AddButton("Import VS Code", onImport)
+	}
 	f.SetCancelFunc(onCancel)
 	return f
 }
@@ -100,6 +105,9 @@ func (a *App) showSettings() {
 	var form *tview.Form
 	form = newSettingsForm(a.opts.Sites.EffectiveDefaults(),
 		func(d sites.Defaults) {
+			// The page edits the plain values; the imported overrides stay as they are.
+			cur := a.opts.Sites.EffectiveDefaults()
+			d.Colors, d.Keys, d.Watermark = cur.Colors, cur.Keys, cur.Watermark
 			if err := a.saveDefaults(d); err != nil {
 				form.SetTitle(" save: " + err.Error() + " ")
 				return
@@ -111,9 +119,41 @@ func (a *App) showSettings() {
 		},
 		func() { a.closeNamed("settings") },
 		func(msg string) { form.SetTitle(" " + msg + " ") },
+		func() {
+			msg := a.importVSCode("")
+			a.closeNamed("settings")
+			a.mu.Lock()
+			a.flashLocked(msg)
+			a.mu.Unlock()
+		},
 	)
 	form.SetBorder(true).SetTitle(" Settings ")
-	a.showOverlay("settings", form, 60, 21)
+	a.showOverlay("settings", form, 64, 23)
+}
+
+// importVSCode runs the VS Code extension import (`:import [path]`, the settings page's
+// button): the sessions become sites (passwords stay in VS Code: type them once), the
+// defaults, colours, key overrides and watermark replace the defaults block. The result
+// is applied at once.
+func (a *App) importVSCode(path string) string {
+	r, from, err := vscode.ImportFile(path)
+	if err != nil {
+		return err.Error()
+	}
+	old := a.opts.Sites.Defaults
+	oldSites := append([]sites.Site(nil), a.opts.Sites.Sites...)
+	added, updated := vscode.Apply(a.opts.Sites, r)
+	if err := a.opts.Sites.Save(); err != nil {
+		a.opts.Sites.Defaults, a.opts.Sites.Sites = old, oldSites
+		return "save: " + err.Error()
+	}
+	d := a.opts.Sites.EffectiveDefaults()
+	a.screen.Separators = d.Separators
+	a.applyDefaults(d)
+	a.mu.Lock()
+	a.sizeOv, a.cpOv = "", 0
+	a.mu.Unlock()
+	return vscode.Summary(r, added, updated) + " from " + from
 }
 
 // saveDefaults stores d in the sites file and applies it. The file is only changed in memory
@@ -127,6 +167,7 @@ func (a *App) saveDefaults(d sites.Defaults) error {
 	}
 	a.screen.Separators = d.Separators
 	a.screen.Highlight = d.SourceHighlight
+	a.applyDefaults(d)
 	a.mu.Lock()
 	a.sizeOv, a.cpOv = "", 0
 	a.mu.Unlock()

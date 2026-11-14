@@ -20,6 +20,12 @@ import (
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "import":
+			os.Exit(runImport(os.Args[2:]))
+		}
+	}
 	fs := flag.NewFlagSet("tn5250-tui", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	site := fs.String("site", "", "connect to this saved site")
@@ -34,6 +40,7 @@ func main() {
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "tn5250-tui %s - a lightweight 5250 terminal for the console\n\n", version)
 		fmt.Fprintln(os.Stderr, "usage: tn5250-tui [flags] [host[:port]]")
+		fmt.Fprintln(os.Stderr, "       tn5250-tui import [--from settings.json] [--dry-run]   import the VS Code extension's settings")
 		fs.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nsites file: %s\n", sites.Path())
 	}

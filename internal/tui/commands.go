@@ -128,6 +128,7 @@ func CommandHelp() [][2]string {
 		{"disconnect", "close the connection"},
 		{"sites", "site manager: add, edit, delete, connect"},
 		{"settings", "defaults page: size, code page, device name, separators, SEU colours, sign-on, trace, keep-alive"},
+		{"import [settings.json]", "import the VS Code extension's sessions, defaults, colours, keys and watermark (passwords stay in VS Code)"},
 		{"signon", "typed sign-on with the site's user and password"},
 		{"key <action>", "press any action (pf13, fieldExit, sysreq, ...); :<action> works too"},
 		{"send <text>", "type text, then Enter"},
@@ -170,6 +171,12 @@ func (a *App) execute(line string) string {
 	case "settings":
 		a.showSettings()
 		return ""
+	case "import":
+		path := ""
+		if len(c.Args) > 0 {
+			path = strings.Join(c.Args, " ")
+		}
+		return a.importVSCode(path)
 	case "signon":
 		if err := a.signon(); err != nil {
 			return err.Error()

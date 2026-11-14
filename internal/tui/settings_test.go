@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -80,7 +81,7 @@ func TestSettingsSavePersistsAndApplies(t *testing.T) {
 	want := sites.Defaults{ScreenSize: "24x80", CodePage: 273, DeviceName: "KWTUI", Separators: true,
 		SourceHighlight: false, AutoSignon: true, TraceFile: "t.log", KeepAliveSeconds: 45}
 	g, err := sites.Load() // the rig points TN5250_TUI_CONFIG at a temp file
-	if err != nil || g.Defaults == nil || *g.Defaults != want {
+	if err != nil || g.Defaults == nil || !reflect.DeepEqual(*g.Defaults, want) {
 		t.Fatalf("file defaults %+v err %v; want %+v", g.Defaults, err, want)
 	}
 	if b, _ := os.ReadFile(sites.Path()); !strings.Contains(string(b), `"defaults"`) {

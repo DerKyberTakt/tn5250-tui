@@ -79,6 +79,7 @@ Open the command bar with `:` (when the cursor is not in an input field) or with
 | `disconnect` | Close the connection |
 | `sites` | Site manager: list, add, edit, delete, connect |
 | `settings` | Settings page: screen size, code page, device name, column separators, SEU colouring, auto sign-on, trace file, keep-alive; saved as `defaults` in sites.json (also: `s` in the site list, Settings button on the login form) |
+| `import [settings.json]` | Import the tn5250-terminal VS Code extension's settings (see below) |
 | `signon` | Typed sign-on now |
 | `key <action>` | Press any action (`enter`, `pf13`, `reset`, `sysreq`, ...) |
 | `send <text>` | Type the text into the field and press Enter |
@@ -88,6 +89,24 @@ Open the command bar with `:` (when the cursor is not in an input field) or with
 | `cp <ccsid>` | Code page (default 37) |
 | `help` | Show help |
 | `q`, `quit` | Quit |
+
+## Settings from the VS Code extension
+
+If you use the [tn5250-terminal](https://github.com/DerKyberTakt/tn5250-terminal) VS Code extension (or the desktop app, which shares its settings), `:import` or
+
+```
+tn5250-tui import [--from path/to/settings.json] [--dry-run]
+```
+
+reads its `settings.json` (VS Code, Insiders, VSCodium or Cursor; `TN5250_VSCODE_SETTINGS` overrides) and brings over:
+
+- the saved sessions as sites (name, host, port, TLS, certificate check, user, screen size, code page, device name, auto sign-on, demo mode);
+- the defaults: screen size, code page, device name, column separators, auto sign-on;
+- the seven attribute colours (`tn5250.colors.*`);
+- the key overrides (`tn5250.keyboard.keymap`), as far as a console can deliver them: F1-F24 with Ctrl/Alt/Shift, Ctrl+letter, the named keys (Enter, Tab, Escape, Backspace, Delete, Insert, Home, End, PageUp, PageDown, arrows). Alt+letter, Ctrl+Shift+letter, Meta, Numpad, Space and Pause have no console form and are skipped;
+- the text watermark and its position (an image watermark cannot be drawn in a terminal).
+
+Passwords never come across: VS Code keeps them in its secret store, which no other program can read. Type each one once in the site form; an existing site keeps its password. The import only reads `settings.json`; it never writes to VS Code. The result goes into `sites.json` (`defaults.colors`, `defaults.keys`, `defaults.watermark`, `demo` on a site) and applies at once. A demo site shows its label tiled over the screen and on the status line.
 
 ## Try it without an IBM i
 

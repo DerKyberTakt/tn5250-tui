@@ -143,6 +143,7 @@ func New(opts AppOptions) *App {
 	a.screen = NewScreen(a.screenSource)
 	a.screen.Separators = opts.Sites.EffectiveDefaults().Separators
 	a.screen.Highlight = opts.Sites.EffectiveDefaults().SourceHighlight
+	a.applyDefaults(opts.Sites.EffectiveDefaults())
 	a.oia = NewOIABar(a.oiaSource)
 	a.bar = tview.NewInputField().SetLabel(":").SetFieldWidth(0)
 	a.bar.SetBackgroundColor(oiaBg)
@@ -266,6 +267,9 @@ func (a *App) oiaSource() (string, string, bool) {
 		row, col = s.Cursor.Row, s.Cursor.Col
 	}
 	o.Connected = a.connected
+	if a.cur.Demo && a.cur.Host != "" {
+		o.DeviceName = strings.TrimSpace(demoLabel(a.cur) + "  " + o.DeviceName)
+	}
 	notice := a.notice
 	if notice == "" && !a.connected && !a.connecting && a.cur.Host != "" {
 		notice = "Press Enter to reconnect, or :connect"
@@ -276,6 +280,14 @@ func (a *App) oiaSource() (string, string, bool) {
 	}
 	alert := !a.connected || notice != "" || o.Message != "" || (o.InputInhibited != "none" && o.InputInhibited != "")
 	return left, right, alert
+}
+
+// demoLabel is the word shown for a demo site (DEMO unless the site names another).
+func demoLabel(s sites.Site) string {
+	if l := strings.TrimSpace(s.DemoLabel); l != "" {
+		return l
+	}
+	return "DEMO"
 }
 
 // requestRedraw is the engine's update callback: it coalesces to at most one
@@ -467,6 +479,12 @@ func (a *App) connectTo(site sites.Site, saved string) {
 // the host refused the name.
 func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
 	site = a.opts.Sites.Complete(site)
+	if attempt == 0 { // the user's own connect runs on the UI goroutine
+		a.screen.DemoLabel = ""
+		if site.Demo {
+			a.screen.DemoLabel = demoLabel(site)
+		}
+	}
 	a.mu.Lock()
 	if a.sizeOv != "" {
 		site.ScreenSize = a.sizeOv

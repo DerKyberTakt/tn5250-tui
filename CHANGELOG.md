@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.1.0 - unreleased
+- `:import` / `tn5250-tui import`: the tn5250-terminal VS Code extension's settings.json (VS Code, Insiders, VSCodium, Cursor) becomes sites and defaults: sessions, screen size, code page, device name, separators, auto sign-on, the seven attribute colours, the key overrides a console can deliver, the text watermark; demo mode marks a site (tiled label + DEMO on the status line). Passwords stay in VS Code; existing sites keep theirs. sites.json gains `defaults.colors`, `defaults.keys`, `defaults.watermark` and `demo`/`demoLabel` on a site (older builds ignore them).
 - Ctrl+K, Ctrl+X, Ctrl+R, Ctrl+E, Ctrl+A, Ctrl+Q, Ctrl+J and Ctrl+Backspace work: tcell reports a Ctrl chord with the modifier set and the key table matched the bare code; Ctrl+Enter on Windows arrives as Ctrl+M and is Field Exit too.
 - SEU edit and browse screens are coloured by language (CL, DDS, RPG fixed and free, SQL incl. embedded) as the emulators do, from the same rules; off with the "SEU syntax colouring" setting.
 - :settings opens a small settings page (screen size, code page, device name, separators, SEU colouring, auto sign-on, trace file, keep-alive) saved as defaults in sites.json.
