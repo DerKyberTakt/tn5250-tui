@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tn5250": {
+      "command": "tn5250-tui",
+      "args": ["mcp", "--site", "agent", "--read-only", "--audit", "tn5250-agent.log"]
+    }
+  }
+}

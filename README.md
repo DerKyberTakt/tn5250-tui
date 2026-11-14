@@ -108,6 +108,26 @@ reads its `settings.json` (VS Code, Insiders, VSCodium or Cursor; `TN5250_VSCODE
 
 Passwords never come across: VS Code keeps them in its secret store, which no other program can read. Type each one once in the site form; an existing site keeps its password. The import only reads `settings.json`; it never writes to VS Code. The result goes into `sites.json` (`defaults.colors`, `defaults.keys`, `defaults.watermark`, `demo` on a site) and applies at once. A demo site shows its label tiled over the screen and on the status line.
 
+## For AI agents: `tn5250-tui mcp` and `tn5250-tui attach`
+
+`tn5250-tui mcp` is an [MCP](https://modelcontextprotocol.io) server on stdin/stdout that hosts 5250 sessions for an agent such as Claude Code, on the same engine as the terminal. In the workspace's `.mcp.json`:
+
+```json
+{ "mcpServers": { "tn5250": { "command": "tn5250-tui", "args": ["mcp", "--site", "agent", "--read-only"] } } }
+```
+
+`agent` is a saved site whose user is the agent's own profile (give the agent its own user profile; the host, not the agent, then decides what it may do). Tools: `connect`, `screen`, `press`, `type`, `fill`, `wait`, `find`, `sessions`, `disconnect`, `trace`, `dump`; every key waits for the host (keyboard unlocked and the screen quiet for 120 ms, 15 s cap). `--read-only` refuses typed text that starts a command that changes things (DLT*, CLR*, CHG*, CRT*, RMV*, UPD*, SBMJOB, CALL, RUNSQL, ...). `--audit FILE` appends one JSON line per agent action (passwords never appear; traces are masked as in the terminal). Credentials never travel through the MCP transport: they come from the sites file, `--user/--password` or `TN5250_USER`/`TN5250_PASSWORD`. A skill for Claude Code is in [`skill/tn5250-agent`](skill/tn5250-agent/SKILL.md).
+
+Watch what the agent does: the server listens on 127.0.0.1 (random port, token in `<sites dir>/agent/<pid>.json`, mode 0600) and
+
+```
+tn5250-tui attach            # the newest server's first session, live, read-only
+tn5250-tui attach --list     # the running servers and their sessions
+tn5250-tui attach s2         # a session by handle; Tab cycles, r reloads, q quits
+```
+
+renders it in any terminal (a VS Code terminal too). `--no-listen` turns the listener off.
+
 ## Try it without an IBM i
 
 `fakehost` replays a recorded PUB400.COM sign-on screen, then answers every Enter with a "FAKE HOST  Enter received" screen:
