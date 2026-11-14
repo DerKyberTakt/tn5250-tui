@@ -20,7 +20,6 @@ func TestKeyTable(t *testing.T) {
 		{"Shift+Tab", key(tcell.KeyTab, 0, tcell.ModShift), "backtab", ""},
 		{"Esc", key(tcell.KeyEscape, 0, 0), "attn", ""},
 		{"Shift+Esc", key(tcell.KeyEscape, 0, tcell.ModShift), "sysreq", ""},
-		{"Shift+Esc", key(tcell.KeyEscape, 0, tcell.ModShift), "sysreq", ""},
 		{"F1", key(tcell.KeyF1, 0, 0), "pf1", ""},
 		{"F12", key(tcell.KeyF12, 0, 0), "pf12", ""},
 		{"Shift+F1", key(tcell.KeyF1, 0, tcell.ModShift), "pf13", ""},
