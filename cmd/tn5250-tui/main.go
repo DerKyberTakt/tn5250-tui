@@ -122,7 +122,7 @@ func (e *engine) Snapshot() tui.Snapshot {
 	out.Cursor.Row, out.Cursor.Col = s.Cursor.Row, s.Cursor.Col
 	out.Cells = make([]tui.Cell, len(s.Cells))
 	for i, c := range s.Cells {
-		out.Cells[i] = tui.Cell{Ch: c.Ch, Attr: c.Attr}
+		out.Cells[i] = tui.Cell{Ch: c.Ch, Attr: c.Attr, Attribute: c.Attribute, Null: c.Null, InField: c.InField}
 	}
 	out.Fields = make([]tui.FieldInfo, len(s.Fields))
 	for i, f := range s.Fields {

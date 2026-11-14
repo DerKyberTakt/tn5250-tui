@@ -440,3 +440,26 @@ func TestScreenSnapshot(t *testing.T) {
 		t.Error("Text/RowText")
 	}
 }
+
+// TestSnapshotNullAndAttributeCells: the snapshot tells a null cell, the attribute position and
+// a field's data cells apart, so a renderer can keep underlines inside fields only.
+func TestSnapshotNullAndAttributeCells(t *testing.T) {
+	h := newHarness(t, Options{})
+	// row 1: attribute 0x24, field of 5, attribute 0x20, then nulls to the end of the row.
+	h.host("0440" + "04110000" + sba(1, 1) + "1d" + "4000" + "24" + "0005" + sba(1, 7) + "20")
+	snap := h.session.Snapshot()
+	if !snap.Cells[0].Attribute || snap.Cells[0].Null || snap.Cells[0].InField {
+		t.Errorf("cell 0 = %+v, want the attribute position", snap.Cells[0])
+	}
+	for i := 1; i <= 5; i++ {
+		if !snap.Cells[i].InField || !snap.Cells[i].Null || snap.Cells[i].Attr != 0x24 {
+			t.Errorf("cell %d = %+v, want a null field cell under 0x24", i, snap.Cells[i])
+		}
+	}
+	if !snap.Cells[6].Attribute || snap.Cells[6].Attr != 0x20 {
+		t.Errorf("cell 6 = %+v, want the closing attribute", snap.Cells[6])
+	}
+	if c := snap.Cells[10]; !c.Null || c.InField || c.Attribute || c.Attr != 0x20 {
+		t.Errorf("cell 10 = %+v, want a null outside any field", c)
+	}
+}

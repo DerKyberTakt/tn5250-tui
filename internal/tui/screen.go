@@ -141,7 +141,13 @@ func (s *Screen) Draw(scr tcell.Screen) {
 				ch = ' '
 			}
 			st := CellStyle(cell.Attr)
-			if a.Nondisplay {
+			// The attribute position is a plain blank, and a null outside any field shows
+			// nothing at all: no underline, no reverse image (the 5250 rule the emulator
+			// learned on day one; the sign-on screen's rows would otherwise be underlined
+			// from the field's end to the right edge).
+			if cell.Attribute || (cell.Null && !cell.InField) {
+				st = tcell.StyleDefault.Background(colBlack).Foreground(colBlack)
+			} else if a.Nondisplay {
 				st = tcell.StyleDefault.Background(colBlack).Foreground(colBlack)
 			} else if a.ColumnSeparators && s.Separators && fits && ch == ' ' && !a.Reverse {
 				ch = '·'

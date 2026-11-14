@@ -232,3 +232,40 @@ func TestOIABarDraws(t *testing.T) {
 		t.Errorf("line %q", line)
 	}
 }
+
+// TestScreenNullCellsOutsideFields: the 5250 rule from the emulator's first day. An underline
+// attribute runs to the next attribute byte, but a null cell outside any field shows nothing,
+// and the attribute position itself is a plain blank; nulls inside a field keep the underline.
+func TestScreenNullCellsOutsideFields(t *testing.T) {
+	snap := newSnap(24, 80)
+	// col 0: attribute 0x24 (green underline); cols 1-5: a field of nulls; col 6: attribute 0x24
+	// again; cols 7..: nulls outside any field (the sign-on screen's long lines).
+	for c := 0; c < 80; c++ {
+		snap.Cells[c] = Cell{Ch: ' ', Attr: 0x24, Null: true}
+	}
+	snap.Cells[0].Attribute, snap.Cells[0].Null = true, false
+	snap.Cells[6].Attribute, snap.Cells[6].Null = true, false
+	for c := 1; c <= 5; c++ {
+		snap.Cells[c].InField = true
+	}
+	snap.Fields = []FieldInfo{{Start: 1, Length: 5}}
+	sim := simScreen(t, 80, 24)
+	sc := NewScreen(func() (Snapshot, bool) { return snap, true })
+	sc.SetRect(0, 0, 80, 24)
+	sc.Draw(sim)
+	sim.Show()
+	underlined := func(x int) bool {
+		cells, w, _ := sim.GetContents()
+		_, _, attr := cells[x+0*w].Style.Decompose()
+		return attr&tcell.AttrUnderline != 0
+	}
+	if underlined(0) {
+		t.Error("the attribute position must not be underlined")
+	}
+	if !underlined(1) || !underlined(5) {
+		t.Error("null cells inside the field must be underlined")
+	}
+	if underlined(7) || underlined(79) {
+		t.Error("null cells outside any field must not be underlined")
+	}
+}

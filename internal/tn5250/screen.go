@@ -254,6 +254,14 @@ type Cell struct {
 	// Attr is the 5250 attribute byte in effect at the cell (0x20..0x3f); decode it with
 	// DecodeAttr. An attribute cell carries its own attribute.
 	Attr byte
+	// Attribute is true where the attribute byte itself sits: that position displays as a
+	// blank with no underline or reverse image.
+	Attribute bool
+	// Null is true for a null cell (X'00'). A null outside any field shows nothing (no
+	// underline, no reverse image); inside a field it shows the field's decoration.
+	Null bool
+	// InField is true for a data cell of a field of the format table.
+	InField bool
 }
 
 // FieldInfo describes one input or protected field of the format table.
@@ -308,13 +316,22 @@ func (s Snapshot) Text() string {
 // snapshot builds the public view. Non-display fields (passwords) leave the engine as blanks.
 func (s *screen) snapshot(cp *ebcdic.CodePage) Snapshot {
 	hidden := s.hiddenCells()
+	inField := make([]bool, len(s.buffer))
+	for _, f := range s.fields {
+		for a := f.start; a < f.start+f.length && a < len(inField); a++ {
+			inField[a] = true
+		}
+	}
 	snap := Snapshot{Rows: s.rows, Cols: s.cols, Cells: make([]Cell, len(s.buffer))}
 	attr := byte(AttrNormal)
 	for i, b := range s.buffer {
-		c := Cell{Ch: ' '}
+		c := Cell{Ch: ' ', InField: inField[i]}
 		if isAttribute(b) {
 			attr = b
-		} else if b != 0 && !hidden[i] {
+			c.Attribute = true
+		} else if b == 0 {
+			c.Null = true
+		} else if !hidden[i] {
 			c.Ch = cp.Decode(b)
 		}
 		c.Attr = attr

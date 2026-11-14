@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.1.0 - unreleased
+- Screen: a null cell outside any field shows nothing, and the attribute position is a plain blank; the sign-on screen no longer has underlines running from the end of each field to the right edge (the rule the emulator learned on its first day).
 
 - Engine: telnet (RFC 1205/2877/4777), GDS records, Write To Display orders, read commands, fields and the keyboard model, ported from the tn5250-terminal engine (plain display, no enhanced interface).
 - TUI: full-screen 5250 grid on tcell/tview with an OIA line, a `:` command bar, Shift+F1-F12 as F13-F24, login form and site manager.

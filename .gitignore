@@ -19,3 +19,6 @@ Thumbs.db
 
 # local agent settings
 .claude/
+
+# local probes
+cmd/liveprobe/

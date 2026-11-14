@@ -29,6 +29,12 @@ type Engine interface {
 type Cell struct {
 	Ch   rune
 	Attr byte
+	// Attribute marks the attribute byte's own position (shown as a plain blank).
+	Attribute bool
+	// Null marks a null cell; outside a field it shows nothing, not even an underline.
+	Null bool
+	// InField marks a data cell of a field.
+	InField bool
 }
 
 // FieldInfo describes one input or bypass field. Start is the offset
