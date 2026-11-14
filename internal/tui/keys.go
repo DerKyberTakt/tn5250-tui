@@ -75,6 +75,7 @@ var KeyTable = []Binding{
 	{tcell.KeyPgUp, 0, "pageUp", "Roll up (Page Up)"},
 	{tcell.KeyPgDn, 0, "pageDown", "Roll down (Page Down)"},
 	{tcell.KeyEscape, 0, "attn", "Attention"},
+	{tcell.KeyEscape, tcell.ModShift, "sysreq", "System Request"},
 	{tcell.KeyCtrlA, 0, "attn", "Attention"},
 	{tcell.KeyCtrlX, 0, "sysreq", "System Request"},
 	{tcell.KeyCtrlR, 0, "reset", "Reset"},

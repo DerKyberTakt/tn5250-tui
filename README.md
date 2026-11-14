@@ -64,7 +64,7 @@ To add a site, type `:sites` and choose add, or fill in the login form (Host, Po
 | PgUp / PgDn | Roll up / roll down |
 | Esc | Attn |
 | Ctrl+R | Reset |
-| Ctrl+X | System Request |
+| Ctrl+X, Shift+Esc | System Request (the terminal must report Shift with Esc: Windows console does, many Linux terminals send a plain Esc) |
 | Ctrl+K | Open the command bar |
 
 Field Exit, Field+ and Field- have no reliable key in a terminal; use `:key fieldExit`, `:key fieldPlus` and `:key fieldMinus`.
