@@ -48,7 +48,7 @@ type Options struct {
     CodePage     int    // default 37
     DeviceName   string
     KeyboardType string
-    TypeAhead    bool
+    NoTypeAhead  bool // type-ahead is ON unless set
 }
 
 type Events struct {

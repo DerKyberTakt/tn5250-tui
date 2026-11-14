@@ -22,9 +22,9 @@ type Options struct {
 	// KeyboardType overrides the KBDTYPE sent with the device name (3 letters); empty = the
 	// one for the code page.
 	KeyboardType string
-	// TypeAhead keeps keys pressed while the keyboard is locked (X SYSTEM) and replays them
-	// when the host unlocks it. Off by default.
-	TypeAhead bool
+	// NoTypeAhead turns type-ahead off. By default (false) keys pressed while the keyboard is
+	// locked (X SYSTEM) are kept and replayed when the host unlocks it, as ACS does.
+	NoTypeAhead bool
 }
 
 // Events are the callbacks of a Session; every field is optional. They run after the session's
@@ -105,7 +105,7 @@ func New(o Options, ev Events) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("tn5250: %w", err)
 	}
-	s := &Session{opts: o, ev: ev, cp: cp, typeAhead: o.TypeAhead, deviceName: o.DeviceName}
+	s := &Session{opts: o, ev: ev, cp: cp, typeAhead: !o.NoTypeAhead, deviceName: o.DeviceName}
 	s.terminalType = "IBM-3179-2"
 	if o.ScreenSize == "27x132" {
 		s.terminalType = "IBM-3477-FC"

@@ -778,3 +778,27 @@ func TestKeyboardUnknownActionDoesNothing(t *testing.T) {
 		t.Error("unknown action changed state")
 	}
 }
+
+// A Dup shows as an overscored '*' and a Field Mark as an overscored ';' on a real display;
+// the snapshot shows '*' and ';' (not the hollow box of other control bytes).
+func TestSnapshotDupAndFieldMarkGlyphs(t *testing.T) {
+	h := kbHarness(t)
+	h.host("04110008" + "110201" + "1d5000200004" + "110301" + "1d4000200004" + "130202" + "04520000")
+	h.session.Press(ActionDup) // fills field 0 with X'1C' and moves to field 1
+	h.session.Press(ActionFieldMark)
+	snap := h.session.Snapshot()
+	f0, f1 := snap.Fields[0], snap.Fields[1]
+	for i := 0; i < f0.Length; i++ {
+		if got := snap.Cells[f0.Start+i].Ch; got != '*' {
+			t.Errorf("dup cell %d = %q, want '*'", i, got)
+		}
+	}
+	if got := snap.Cells[f1.Start].Ch; got != ';' {
+		t.Errorf("field mark cell = %q, want ';'", got)
+	}
+	// Other control bytes still show as the hollow box (U+25A1).
+	h.screen().buffer[f1.Start+1] = 0x1d
+	if got := h.session.Snapshot().Cells[f1.Start+1].Ch; got != '□' {
+		t.Errorf("X'1D' cell = %q, want the hollow box", got)
+	}
+}

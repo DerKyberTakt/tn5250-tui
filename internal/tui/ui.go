@@ -60,6 +60,7 @@ func (a *App) typeText(text string) {
 			return
 		}
 	}
+	a.clearFlashLocked()
 	a.engine.Type(text)
 	a.mu.Unlock()
 }
@@ -75,7 +76,8 @@ func (a *App) pressKey(action string) {
 		}
 		return
 	}
-	a.engine.Press(action)
+	a.clearFlashLocked()
+	a.pressLocked(action)
 	a.mu.Unlock()
 }
 

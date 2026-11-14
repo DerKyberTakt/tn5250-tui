@@ -101,10 +101,17 @@ type App struct {
 	curSaved    string     // name of the saved site, "" for ad-hoc
 	autoPending bool
 	notice      string
+	noticeFlash bool // notice is a one-off message; the next key press clears it
 	sizeOv      string
 	cpOv        int
 	traceW      io.Writer
 	traceCloser io.Closer
+
+	pcAnswered    bool           // the STRPCCMD screen on show was already answered
+	pendingSignon *pendingSignon // a typed sign-on waiting for the host's answer
+	hintShown     bool           // the code page hint was shown on this connection
+
+	now func() time.Time // time.Now; tests replace it
 
 	overlays []overlay
 	barOpen  bool
@@ -121,7 +128,7 @@ func New(opts AppOptions) *App {
 	if opts.Sites == nil {
 		opts.Sites = &sites.File{}
 	}
-	a := &App{opts: opts, dialer: opts.Dialer}
+	a := &App{opts: opts, dialer: opts.Dialer, now: time.Now}
 	if a.dialer == nil {
 		a.dialer = NetDialer{}
 	}
@@ -229,6 +236,7 @@ func (a *App) Quit() {
 func (a *App) setNotice(msg string) {
 	a.mu.Lock()
 	a.notice = msg
+	a.noticeFlash = false
 	a.mu.Unlock()
 }
 
@@ -280,7 +288,32 @@ func (a *App) requestRedraw() {
 func (a *App) afterUpdate() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.checkSignonLocked() // before the auto sign-on: its own attempt is judged on a later update
+	a.pcCommandLocked()
 	a.autoSignonLocked()
+}
+
+// flashLocked shows msg on the OIA line until the next key press. The caller holds a.mu.
+func (a *App) flashLocked(msg string) {
+	a.notice = msg
+	a.noticeFlash = true
+}
+
+// clearFlashLocked removes a one-off notice (the user pressed a key). The caller holds a.mu.
+func (a *App) clearFlashLocked() {
+	if a.noticeFlash {
+		a.notice = ""
+		a.noticeFlash = false
+	}
+}
+
+// pressLocked presses an engine key. Enter first notes what a sign-on attempt holds, so a
+// refusal can point at the code page. The caller holds a.mu and has checked a.engine.
+func (a *App) pressLocked(action string) {
+	if action == "enter" {
+		a.armSignonLocked()
+	}
+	a.engine.Press(action)
 }
 
 // ---- connections -----------------------------------------------------------
@@ -297,6 +330,16 @@ type session struct {
 	pending [][]byte
 
 	dead bool // the socket ended (guarded by App.mu)
+
+	// Workstation name retries. template is the name as configured (variables expanded),
+	// attempt the number of this try (0 = the first), deviceName the name requested now.
+	template   string
+	attempt    int
+	deviceName string
+	// connectedAt is when the dial returned (guarded by App.mu; zero until then).
+	connectedAt time.Time
+	// screens counts the engine updates the host caused; 0 means it never sent a screen.
+	screens atomic.Int64
 
 	linkMu sync.Mutex
 	link   Link
@@ -377,21 +420,46 @@ func (a *App) dropped(s *session, err error) {
 	a.connected = false
 	a.connecting = false
 	a.autoPending = false
+	// Closed by the host right after the connect and before any screen: the workstation name
+	// is most likely in use (by an ACS session, say). Try the next name.
+	early := s.deviceName != "" && s.screens.Load() == 0 &&
+		(s.connectedAt.IsZero() || a.now().Sub(s.connectedAt) < earlyDropWindow)
+	retry := early && s.attempt < maxDeviceRetries && nextDeviceName(s.template, s.attempt+1) != ""
+	cur, saved := a.cur, a.curSaved
 	msg := "Connection closed. Press Enter to reconnect, or :connect"
-	if err != nil {
+	switch {
+	case early:
+		msg = fmt.Sprintf("Connection closed by the host (workstation %s in use?). Press Enter to reconnect, or :connect", s.deviceName)
+	case err != nil:
 		msg = "Connection lost: " + err.Error() + ". Press Enter to reconnect"
 	}
 	a.notice = msg
+	a.noticeFlash = false
 	a.mu.Unlock()
 	s.linkMu.Lock()
 	s.link = nil
 	s.linkMu.Unlock()
+	if retry {
+		a.dial(cur, saved, s.attempt+1, s.deviceName)
+		return
+	}
 	a.requestRedraw()
 }
+
+// earlyDropWindow is how soon after the connect a close by the host, with no screen sent,
+// counts as "workstation name in use".
+const earlyDropWindow = 8 * time.Second
 
 // connectTo drops any current connection and connects to site. saved is the
 // saved site's name ("" for an ad-hoc host).
 func (a *App) connectTo(site sites.Site, saved string) {
+	a.dial(site, saved, 0, "")
+}
+
+// dial is connectTo for connection attempt number attempt. The site's device name is a
+// template (see nextDeviceName); attempt 0 is the user's own connect, later ones retry after
+// the host refused the name.
+func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
 	site = site.WithDefaults()
 	a.mu.Lock()
 	if a.sizeOv != "" {
@@ -404,13 +472,21 @@ func (a *App) connectTo(site sites.Site, saved string) {
 	a.Disconnect()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &session{app: a, cancel: cancel}
+	s := &session{app: a, cancel: cancel, attempt: attempt}
+	if tpl := expandDeviceVars(strings.TrimSpace(site.DeviceName)); tpl != "" {
+		s.template = tpl
+		s.deviceName = nextDeviceName(tpl, attempt)
+	}
 	if a.opts.EngineFactory == nil {
 		cancel()
 		a.setNotice("no engine configured")
 		return
 	}
-	eng, err := a.opts.EngineFactory(site.ScreenSize, site.CodePage, site.DeviceName, s.send, a.requestRedraw)
+	update := func() {
+		s.screens.Add(1)
+		a.requestRedraw()
+	}
+	eng, err := a.opts.EngineFactory(site.ScreenSize, site.CodePage, s.deviceName, s.send, update)
 	if err != nil {
 		cancel()
 		a.setNotice("engine: " + err.Error())
@@ -426,11 +502,16 @@ func (a *App) connectTo(site sites.Site, saved string) {
 	a.connected = false
 	a.connecting = true
 	a.autoPending = site.AutoSignon && site.User != "" && site.Password != ""
+	a.pcAnswered, a.pendingSignon, a.hintShown = false, nil, false
+	a.noticeFlash = false
 	a.notice = fmt.Sprintf("Connecting to %s:%d ...", site.Host, site.Port)
+	if refused != "" {
+		a.notice = fmt.Sprintf("Workstation %s refused by the host, trying %s ...", refused, s.deviceName)
+	}
 	trace := a.traceW
 	a.mu.Unlock()
 
-	if saved != "" {
+	if saved != "" && attempt == 0 {
 		a.opts.Sites.LastUsed = saved
 		_ = a.opts.Sites.Save()
 	}
@@ -452,6 +533,9 @@ func (a *App) connectTo(site sites.Site, saved string) {
 			a.requestRedraw()
 			return
 		}
+		a.mu.Lock()
+		s.connectedAt = a.now()
+		a.mu.Unlock()
 		if !s.setLink(link) {
 			_ = link.Close()
 		}
@@ -540,6 +624,15 @@ var errNoSignon = errors.New("sign-on refused: the screen has no user and passwo
 // presses Enter. It refuses unless the second input field is non-display.
 // The caller holds a.mu.
 func typedSignon(e Engine, snap Snapshot, user, password string) error {
+	if err := fillSignon(e, snap, user, password); err != nil {
+		return err
+	}
+	e.Press("enter")
+	return nil
+}
+
+// fillSignon types user and password into the first two input fields (no Enter).
+func fillSignon(e Engine, snap Snapshot, user, password string) error {
 	in := snap.InputFields()
 	if len(in) < 2 || !in[1].Nondisplay {
 		return errNoSignon
@@ -552,7 +645,16 @@ func typedSignon(e Engine, snap Snapshot, user, password string) error {
 		e.Press("eraseEof")
 		e.Type(text)
 	}
-	e.Press("enter")
+	return nil
+}
+
+// signonLocked is typedSignon through the App: Enter goes through pressLocked, so the code
+// page hint watches the attempt. The caller holds a.mu.
+func (a *App) signonLocked(snap Snapshot, user, password string) error {
+	if err := fillSignon(a.engine, snap, user, password); err != nil {
+		return err
+	}
+	a.pressLocked("enter")
 	return nil
 }
 
@@ -570,7 +672,7 @@ func (a *App) autoSignonLocked() {
 		return
 	}
 	a.autoPending = false // the first screen decides, once
-	_ = typedSignon(a.engine, snap, a.cur.User, a.cur.Password)
+	_ = a.signonLocked(snap, a.cur.User, a.cur.Password)
 }
 
 // signon is the `signon` command.
@@ -583,5 +685,89 @@ func (a *App) signon() error {
 	if a.cur.User == "" || a.cur.Password == "" {
 		return errors.New("no user and password for this connection (save them in the site, or use --user/--password)")
 	}
-	return typedSignon(a.engine, a.engine.Snapshot(), a.cur.User, a.cur.Password)
+	return a.signonLocked(a.engine.Snapshot(), a.cur.User, a.cur.Password)
+}
+
+// ---- code page hint after a refused sign-on --------------------------------
+
+// signonAnswerScreens is how many locked updates the host may take to answer a sign-on
+// attempt before the hint gives up.
+const signonAnswerScreens = 3
+
+// pendingSignon is a sign-on attempt (Enter on a sign-on screen) whose password held
+// characters that differ between code pages. Only those characters are kept, never the
+// password itself.
+type pendingSignon struct {
+	chars   []string
+	screens int
+}
+
+// armSignonLocked runs when Enter is pressed: if the screen is a sign-on screen and its
+// password field holds variant characters, remember them so a refusal can name them.
+// The caller holds a.mu.
+func (a *App) armSignonLocked() {
+	a.pendingSignon = nil
+	p, ok := a.engine.(SignonProber)
+	if !ok {
+		return
+	}
+	probe := p.SignonProbe()
+	if !probe.Screen || len(probe.VariantChars) == 0 {
+		return
+	}
+	a.pendingSignon = &pendingSignon{chars: probe.VariantChars}
+}
+
+// checkSignonLocked judges a pending sign-on attempt: when the host unlocked the keyboard
+// and shows a sign-on screen again, the attempt failed, and the notice names the variant
+// characters and the code page in use. One notice per connection. The caller holds a.mu.
+func (a *App) checkSignonLocked() {
+	ps := a.pendingSignon
+	if ps == nil || a.engine == nil {
+		return
+	}
+	if o := a.engine.OIA(true); o.InputInhibited != "none" && o.InputInhibited != "" {
+		if ps.screens++; ps.screens > signonAnswerScreens {
+			a.pendingSignon = nil
+		}
+		return
+	}
+	a.pendingSignon = nil
+	p, ok := a.engine.(SignonProber)
+	if !ok {
+		return
+	}
+	probe := p.SignonProbe()
+	if !probe.Screen || a.hintShown {
+		return
+	}
+	a.hintShown = true
+	a.flashLocked(fmt.Sprintf("Sign-on failed; the password has characters that differ between code pages (%s). Code page in use: %d; if the user and password are right, set :cp to the host's CCSID and reconnect",
+		strings.Join(ps.chars, " "), probe.CodePage))
+}
+
+// ---- STRPCCMD --------------------------------------------------------------
+
+// pcCommandLocked answers a STRPCCMD (PC Organizer) screen with Enter at once so the host's
+// program resumes, and says on the OIA line that the command was not run: this terminal never
+// runs a command the host sends. The caller holds a.mu.
+func (a *App) pcCommandLocked() {
+	if a.engine == nil || !a.connected {
+		return
+	}
+	src, ok := a.engine.(PcCommandSource)
+	if !ok {
+		return
+	}
+	cmd, found := src.PcCommand()
+	if !found {
+		a.pcAnswered = false
+		return
+	}
+	if a.pcAnswered {
+		return
+	}
+	a.pcAnswered = true
+	a.flashLocked("PC command not run here: " + cmd.Command)
+	a.engine.Press("enter")
 }

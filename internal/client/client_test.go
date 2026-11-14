@@ -170,3 +170,10 @@ func TestVerifyPeerNoCert(t *testing.T) {
 		t.Fatal("no certificate must be refused even when trusting any")
 	}
 }
+
+// The keep-alive period matches the TypeScript client (15 s).
+func TestKeepAliveIntervalIs15Seconds(t *testing.T) {
+	if KeepAliveInterval != 15*time.Second {
+		t.Errorf("KeepAliveInterval = %v, want 15s", KeepAliveInterval)
+	}
+}

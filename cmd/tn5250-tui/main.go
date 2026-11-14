@@ -82,7 +82,7 @@ func main() {
 
 // newEngine builds a tn5250 session for one connection, wrapped for the TUI.
 func newEngine(size string, cp int, dev string, send func(b, forTrace []byte), update func()) (tui.Engine, error) {
-	s, err := tn5250.New(tn5250.Options{ScreenSize: size, CodePage: cp, DeviceName: dev, TypeAhead: true}, tn5250.Events{
+	s, err := tn5250.New(tn5250.Options{ScreenSize: size, CodePage: cp, DeviceName: dev}, tn5250.Events{
 		Send:   send,
 		Update: update,
 	})
@@ -114,6 +114,18 @@ func (e *engine) OIA(connected bool) tui.OIA {
 		Message:        o.Message,
 		QueuedKeys:     o.QueuedKeys,
 	}
+}
+
+// PcCommand implements tui.PcCommandSource.
+func (e *engine) PcCommand() (tui.PcCommand, bool) {
+	c, ok := e.s.PcCommand()
+	return tui.PcCommand{Command: c.Command, Wait: c.Wait}, ok
+}
+
+// SignonProbe implements tui.SignonProber.
+func (e *engine) SignonProbe() tui.SignonProbe {
+	p := e.s.SignonProbe()
+	return tui.SignonProbe{Screen: p.Screen, VariantChars: p.VariantChars, CodePage: p.CodePage}
 }
 
 func (e *engine) Snapshot() tui.Snapshot {

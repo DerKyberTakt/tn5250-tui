@@ -16,6 +16,9 @@ import (
 	"time"
 )
 
+// KeepAliveInterval is the TCP keep-alive probe period (15 s, as the TypeScript client).
+const KeepAliveInterval = 15 * time.Second
+
 // Options describes one connection attempt.
 type Options struct {
 	Host                string
@@ -60,7 +63,7 @@ func Dial(ctx context.Context, o Options) (*Conn, error) {
 	}
 	d := &net.Dialer{Timeout: timeout}
 	if o.KeepAlive {
-		d.KeepAlive = 30 * time.Second
+		d.KeepAlive = KeepAliveInterval
 	} else {
 		d.KeepAlive = -1
 	}

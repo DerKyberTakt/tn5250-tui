@@ -248,7 +248,8 @@ func (a *App) pressNamed(name string) string {
 	if a.engine == nil || !a.connected {
 		return "not connected"
 	}
-	a.engine.Press(act)
+	a.clearFlashLocked()
+	a.pressLocked(act)
 	return ""
 }
 
@@ -258,8 +259,9 @@ func (a *App) cmdSend(text string) string {
 	if a.engine == nil || !a.connected {
 		return "not connected"
 	}
+	a.clearFlashLocked()
 	a.engine.Type(text)
-	a.engine.Press("enter")
+	a.pressLocked("enter")
 	return ""
 }
 

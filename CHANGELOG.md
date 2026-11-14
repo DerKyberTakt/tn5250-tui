@@ -10,3 +10,10 @@
 - Test host: `internal/fakehost` and `cmd/fakehost` replay a PUB400 capture so the TUI runs without an IBM i.
 - Install: `install.sh` (Linux, macOS), `install.ps1` (Windows), AUR `tn5250-tui-bin` PKGBUILD.
 - CI and releases: GitHub Actions for vet/test/build and tagged releases with SHA256SUMS.
+- Device name in use: when the host closes the connection within 8 s of connecting without ever sending a screen, the terminal reconnects with the next workstation name (`*` = a letter A-Z, `=` = a digit 0-9 per attempt, a plain name gets a suffix 1-9; at most 10 retries) and then says "workstation NAME in use?" on the OIA line.
+- Sign-on: when the host shows the sign-on screen again after a typed or automatic sign-on whose password held characters that differ between code pages (! @ # $ [ ] { } | \ ^ ~ and accented letters), a one-time notice names those characters and the code page in use (`internal/tn5250/variant.go`, ported from the TypeScript engine); the password is never shown or logged.
+- Screen: a Dup (X'1C') shows as `*` and a Field Mark (X'1E') as `;`, as the overscored glyphs of a real display, instead of the hollow box.
+- STRPCCMD / PC Organizer: the engine detects the request (`internal/tn5250/pco.go`); the terminal presses Enter at once so the host program resumes and shows "PC command not run here: <command>" (a command from the host is never run).
+- Client: TCP keep-alive probes every 15 s (was 30 s), as the TypeScript client.
+- Engine tests: Read Screen and Read Screen Extended answers (also to Print, also at 27x132), the Query reply beside a Save Screen at 27x132, and the Print key flow (AID F6, then Read Screen to Print).
+- Engine: type-ahead is on by default, as in the TypeScript engine; `Options.NoTypeAhead` turns it off (replaces `Options.TypeAhead`).

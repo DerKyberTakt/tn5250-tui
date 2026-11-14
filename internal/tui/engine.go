@@ -24,6 +24,37 @@ type Engine interface {
 	Reset()
 }
 
+// PcCommand is a PC command the host asked the terminal to run (STRPCCMD / PC Organizer).
+type PcCommand struct {
+	Command string
+	// Wait is true for PAUSE(*YES).
+	Wait bool
+}
+
+// PcCommandSource is implemented by an engine that recognises STRPCCMD requests. The App
+// checks for it with a type assertion, so an engine without it simply never sees one.
+type PcCommandSource interface {
+	// PcCommand reports the PC command on the current screen, when the host waits for a read.
+	PcCommand() (PcCommand, bool)
+}
+
+// SignonProbe describes the current screen for the code page hint after a refused sign-on.
+type SignonProbe struct {
+	// Screen is true when the screen is a sign-on screen.
+	Screen bool
+	// VariantChars lists the characters of the password field that differ between code
+	// pages. It never holds the password.
+	VariantChars []string
+	// CodePage is the CCSID in use.
+	CodePage int
+}
+
+// SignonProber is implemented by an engine that can probe a sign-on screen (type assertion,
+// as PcCommandSource).
+type SignonProber interface {
+	SignonProbe() SignonProbe
+}
+
 // Cell is one screen position. Attr is the 5250 attribute byte in effect
 // (0x20..0x3f; decode it with DecodeAttr).
 type Cell struct {

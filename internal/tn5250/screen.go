@@ -313,6 +313,19 @@ func (s Snapshot) Text() string {
 	return strings.Join(rows, "\n")
 }
 
+// glyph is the character shown for a buffer byte. A real display draws a Dup (X'1C') as an
+// overscored asterisk and a Field Mark (X'1E') as an overscored semicolon; the console has no
+// overscore, so they show as plain '*' and ';' instead of the hollow box of other controls.
+func glyph(cp *ebcdic.CodePage, b byte) rune {
+	switch b {
+	case ebcdicDup:
+		return '*'
+	case ebcdicFieldMark:
+		return ';'
+	}
+	return cp.Decode(b)
+}
+
 // snapshot builds the public view. Non-display fields (passwords) leave the engine as blanks.
 func (s *screen) snapshot(cp *ebcdic.CodePage) Snapshot {
 	hidden := s.hiddenCells()
@@ -332,7 +345,7 @@ func (s *screen) snapshot(cp *ebcdic.CodePage) Snapshot {
 		} else if b == 0 {
 			c.Null = true
 		} else if !hidden[i] {
-			c.Ch = cp.Decode(b)
+			c.Ch = glyph(cp, b)
 		}
 		c.Attr = attr
 		snap.Cells[i] = c

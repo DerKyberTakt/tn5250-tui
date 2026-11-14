@@ -205,7 +205,7 @@ func TestSessionTraceCopyOnlyWhenNeeded(t *testing.T) {
 }
 
 func TestSessionTypeAheadQueueAndDrain(t *testing.T) {
-	h := newHarness(t, Options{ScreenSize: "27x132", CodePage: 37, TypeAhead: true})
+	h := newHarness(t, Options{ScreenSize: "27x132", CodePage: 37})
 	replayCapture(t, h)
 	first := h.screen().fields[0]
 	h.screen().cursor = first.start
@@ -243,7 +243,7 @@ func TestSessionTypeAheadQueueAndDrain(t *testing.T) {
 }
 
 func TestSessionTypeAheadLimitAndImmediateKeys(t *testing.T) {
-	h := newHarness(t, Options{TypeAhead: true})
+	h := newHarness(t, Options{})
 	for i := 0; i < 300; i++ {
 		h.session.Type("x")
 	}
@@ -263,7 +263,7 @@ func TestSessionTypeAheadLimitAndImmediateKeys(t *testing.T) {
 }
 
 func TestSessionTypeAheadDroppedOnError(t *testing.T) {
-	h := newHarness(t, Options{TypeAhead: true})
+	h := newHarness(t, Options{})
 	// A queue that replays cleanly is drained.
 	h.session.Type("ab")
 	h.session.Press(ActionTab)
@@ -272,7 +272,7 @@ func TestSessionTypeAheadDroppedOnError(t *testing.T) {
 		t.Errorf("queue not drained: %d row %q", h.session.OIA(true).QueuedKeys, h.rowText(4))
 	}
 	// A queue that hits an operator error is dropped.
-	h2 := newHarness(t, Options{TypeAhead: true})
+	h2 := newHarness(t, Options{})
 	h2.session.Type("a")
 	h2.session.Type("b")
 	h2.host("04110008" + sba(5, 5) + e("label") + "130101" + "04520000") // no fields: cursor on a protected cell
@@ -282,10 +282,19 @@ func TestSessionTypeAheadDroppedOnError(t *testing.T) {
 }
 
 func TestSessionDropsKeysWhileLockedWithoutTypeAhead(t *testing.T) {
-	h := newHarness(t, Options{})
+	h := newHarness(t, Options{NoTypeAhead: true})
 	h.session.Type("X")
 	if h.session.OIA(true).QueuedKeys != 0 {
 		t.Error("queued without type-ahead")
+	}
+}
+
+// Type-ahead is on by default (as the TypeScript engine); NoTypeAhead is the opt-out.
+func TestSessionTypeAheadIsOnByDefault(t *testing.T) {
+	h := newHarness(t, Options{})
+	h.session.Type("X")
+	if got := h.session.OIA(true).QueuedKeys; got != 1 {
+		t.Errorf("queued keys = %d, want 1 with the default options", got)
 	}
 }
 
@@ -407,7 +416,7 @@ func TestSessionSnapshotIsACopy(t *testing.T) {
 }
 
 func TestSessionReset(t *testing.T) {
-	h := newHarness(t, Options{TypeAhead: true, DeviceName: "mydev"})
+	h := newHarness(t, Options{DeviceName: "mydev"})
 	h.session.Feed(h2b(t, "fffd19"))
 	h.host("042000" + "04110008" + sba(1, 1) + e("wide screen") + "1d4000200005" + "0452" + "0000")
 	h.session.Press(ActionEnter)
@@ -455,7 +464,7 @@ func TestSessionEventsMayCallBackIntoTheSession(t *testing.T) {
 }
 
 func TestSessionConcurrentUse(t *testing.T) {
-	h := newHarness(t, Options{TypeAhead: true})
+	h := newHarness(t, Options{})
 	h.host(twoFields)
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
