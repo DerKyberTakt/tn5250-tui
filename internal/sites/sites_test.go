@@ -69,7 +69,7 @@ func TestBadJSON(t *testing.T) {
 
 func TestWithDefaults(t *testing.T) {
 	s := Site{Host: "x", TLS: true}.WithDefaults()
-	if s.Port != 992 || s.ScreenSize != "24x80" || s.CodePage != 37 {
+	if s.Port != 992 || s.ScreenSize != "27x132" || s.CodePage != 37 {
 		t.Fatalf("%+v", s)
 	}
 	if (Site{}).WithDefaults().Port != 23 {

@@ -21,7 +21,7 @@ func TestSiteInputValidation(t *testing.T) {
 		t.Fatalf("got %+v\nwant %+v", s, want)
 	}
 	d, err := siteInput{Name: "x", Host: "h"}.toSite()
-	if err != nil || d.Port != 23 || d.CodePage != 37 || d.ScreenSize != "24x80" {
+	if err != nil || d.Port != 23 || d.CodePage != 37 || d.ScreenSize != "27x132" {
 		t.Fatalf("defaults %+v %v", d, err)
 	}
 	for _, bad := range []siteInput{

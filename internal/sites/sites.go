@@ -143,7 +143,8 @@ func (f *File) Delete(name string) bool {
 	return false
 }
 
-// WithDefaults fills empty fields: port 23 (992 with TLS), 24x80, code page 37.
+// WithDefaults fills empty fields: port 23 (992 with TLS), 27x132 (the wide screen most IBM i
+// screens are designed for; 24x80 is a site setting), code page 37.
 func (s Site) WithDefaults() Site {
 	if s.Port == 0 {
 		if s.TLS {
@@ -153,7 +154,7 @@ func (s Site) WithDefaults() Site {
 		}
 	}
 	if s.ScreenSize == "" {
-		s.ScreenSize = "24x80"
+		s.ScreenSize = "27x132"
 	}
 	if s.CodePage == 0 {
 		s.CodePage = 37

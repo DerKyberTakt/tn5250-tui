@@ -12,7 +12,7 @@ import (
 	"github.com/DerKyberTakt/tn5250-tui/internal/sites"
 )
 
-var screenSizes = []string{"24x80", "27x132"}
+var screenSizes = []string{"27x132", "24x80"}
 
 // siteInput holds the raw text of a site form.
 type siteInput struct {

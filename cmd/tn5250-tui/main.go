@@ -27,7 +27,7 @@ func main() {
 	user := fs.String("user", "", "sign on as this user profile (with --password)")
 	password := fs.String("password", "", "password for --user (plain text, as the sites file)")
 	traceFile := fs.String("trace", "", "write a hex trace of the connection to this file")
-	size := fs.String("size", "", "screen size for a host target: 24x80 or 27x132")
+	size := fs.String("size", "", "screen size for a host target: 27x132 (default) or 24x80")
 	codePage := fs.Int("cp", 0, "EBCDIC code page for a host target (default 37)")
 	device := fs.String("device", "", "workstation (device) name to request")
 	showVersion := fs.Bool("version", false, "print the version and exit")

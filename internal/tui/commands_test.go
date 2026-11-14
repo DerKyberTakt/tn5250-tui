@@ -138,10 +138,10 @@ func TestKeySendAndBareActions(t *testing.T) {
 func TestSizeAndCPApplyOnNextConnect(t *testing.T) {
 	r := newRig(t, nil)
 	r.connect(t, "pub400.com")
-	r.a.RunCommand("size 27x132")
+	r.a.RunCommand("size 24x80")
 	r.a.RunCommand("cp 273")
 	r.mu.Lock()
-	if r.args[0] != "24x80/37/" {
+	if r.args[0] != "27x132/37/" {
 		t.Errorf("first connect %q", r.args[0])
 	}
 	r.mu.Unlock()
@@ -149,7 +149,7 @@ func TestSizeAndCPApplyOnNextConnect(t *testing.T) {
 	waitFor(t, "second engine", func() bool { return len(r.engines) == 2 })
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.args[1] != "27x132/273/" {
+	if r.args[1] != "24x80/273/" {
 		t.Errorf("second connect %q", r.args[1])
 	}
 }

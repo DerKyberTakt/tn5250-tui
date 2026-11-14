@@ -83,7 +83,7 @@ Open the command bar with `:` (when the cursor is not in an input field) or with
 | `send <text>` | Type the text into the field and press Enter |
 | `trace on\|off [file]` | Protocol trace |
 | `dump [file]` | Write the screen text to a file (default `tn5250-screen.txt`) |
-| `size 24x80\|27x132` | Screen size for the next connection |
+| `size 27x132\|24x80` | Screen size for the next connection (27x132 is the default) |
 | `cp <ccsid>` | Code page (default 37) |
 | `help` | Show help |
 | `q`, `quit` | Quit |

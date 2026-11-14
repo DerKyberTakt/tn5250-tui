@@ -68,7 +68,7 @@ type AppOptions struct {
 	// TraceFile, when set, receives the hex trace of every connection.
 	TraceFile string
 	// ScreenSize, CodePage and DeviceName apply to host[:port] targets
-	// (defaults 24x80, 37, engine's own).
+	// (defaults 27x132, 37, engine's own).
 	ScreenSize string
 	CodePage   int
 	DeviceName string

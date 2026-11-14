@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.1.0 - unreleased
+- New sites and host targets default to the 27x132 screen (IBM-3477-FC); `:size 24x80` or the site setting gives the small screen.
 - Screen: a null cell outside any field shows nothing, and the attribute position is a plain blank; the sign-on screen no longer has underlines running from the end of each field to the right edge (the rule the emulator learned on its first day).
 
 - Engine: telnet (RFC 1205/2877/4777), GDS records, Write To Display orders, read commands, fields and the keyboard model, ported from the tn5250-terminal engine (plain display, no enhanced interface).
