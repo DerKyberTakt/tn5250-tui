@@ -149,7 +149,7 @@ func (m *siteManager) refresh() {
 	cur := m.list.GetCurrentItem()
 	m.list.Clear()
 	for _, s := range m.a.opts.Sites.Sites {
-		d := s.WithDefaults()
+		d := m.a.opts.Sites.Complete(s)
 		tls := ""
 		if d.TLS {
 			tls = " tls"
@@ -165,7 +165,7 @@ func (m *siteManager) refresh() {
 	if m.list.GetItemCount() == 0 {
 		m.hint.SetText("No sites yet: press a to add one.")
 	} else {
-		m.hint.SetText("Enter connect   a add   e edit   d delete   Esc close")
+		m.hint.SetText("Enter connect   a add   e edit   d delete   s settings   Esc close")
 	}
 }
 
@@ -215,6 +215,9 @@ func (a *App) showSites() {
 					a.confirmDelete(m, s.Name)
 				}
 				return nil
+			case 's':
+				a.showSettings()
+				return nil
 			}
 		}
 		return ev
@@ -239,6 +242,10 @@ func (a *App) confirmDelete(m *siteManager, name string) {
 
 // showSiteForm opens the add/edit form; oldName is "" for a new site.
 func (a *App) showSiteForm(m *siteManager, s sites.Site, oldName string) {
+	if oldName == "" { // a new site starts from the defaults
+		d := a.opts.Sites.EffectiveDefaults()
+		s.ScreenSize, s.CodePage, s.DeviceName, s.AutoSignon = d.ScreenSize, d.CodePage, d.DeviceName, d.AutoSignon
+	}
 	var form *tview.Form
 	form = newSiteForm(s,
 		func(site sites.Site) {

@@ -144,6 +144,54 @@ func TestScreenColumnSeparators(t *testing.T) {
 	}
 }
 
+// seuSnap is a 24x80 SEU edit screen of a CL member with one source line per entry.
+func seuSnap(file string, source []string) Snapshot {
+	s := newSnap(24, 80)
+	s.put(0, 0, " Columns . . . :    1  71           Edit                       MYLIB/"+file, 0x20)
+	s.put(1, 0, " SEU==>", 0x20)
+	s.put(1, 69, "MYMBR", 0x20)
+	s.Fields = append(s.Fields, FieldInfo{Start: 1*80 + 8, Length: 60})
+	s.put(2, 0, " FMT **  ...+... 1 ...+... 2 ...+... 3 ...+... 4 ...+... 5 ...+... 6 ...+... 7", 0x20)
+	s.put(3, 0, "        *************** Beginning of data *************************************", 0x20)
+	for i, line := range source {
+		r := 4 + i
+		s.put(r, 0, "000"+string(rune('1'+i))+".00 "+line, 0x20)
+		s.Fields = append(s.Fields, FieldInfo{Start: r * 80, Length: 7}, FieldInfo{Start: r*80 + 8, Length: 71})
+	}
+	s.put(4+len(source), 0, "        ****************** End of data ****************************************", 0x20)
+	s.put(21, 0, " F3=Exit   F4=Prompt   F5=Refresh   F9=Retrieve   F10=Cursor   F11=Toggle", 0x20)
+	return s
+}
+
+func TestScreenSourceHighlight(t *testing.T) {
+	snap := seuSnap("QCLLESRC", []string{"             PGM", "             SNDPGMMSG  MSG('Hi')", "             ENDPGM"})
+	sim := simScreen(t, 80, 24)
+	sc := NewScreen(func() (Snapshot, bool) { return snap, true })
+	sc.SetRect(0, 0, 80, 24)
+	sc.Highlight = true
+	sc.Draw(sim)
+	sim.Show()
+	// "PGM" on row 4 starts at column 8+13.
+	if r, fg, _ := cellAt(sim, 21, 4); r != 'P' || fg != colTurquoise {
+		t.Errorf("keyword: got %q %v, want P turquoise", r, fg)
+	}
+	// The string 'Hi' on row 5: SNDPGMMSG  MSG('Hi') -> the quote sits at 8+13+15.
+	if r, fg, _ := cellAt(sim, 36, 5); r != '\'' || fg != colYellow {
+		t.Errorf("string: got %q %v, want ' yellow", r, fg)
+	}
+	// The header keeps the host colour.
+	if _, fg, _ := cellAt(sim, 1, 0); fg != colGreen {
+		t.Errorf("header: got %v, want green", fg)
+	}
+	// Off: the keyword shows in the field's colour.
+	sc.Highlight = false
+	sc.Draw(sim)
+	sim.Show()
+	if _, fg, _ := cellAt(sim, 21, 4); fg != colGreen {
+		t.Errorf("highlight off: got %v, want green", fg)
+	}
+}
+
 func TestScreenNotConnectedHint(t *testing.T) {
 	sim := simScreen(t, 90, 10)
 	sc := NewScreen(func() (Snapshot, bool) { return Snapshot{}, false })

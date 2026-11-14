@@ -34,7 +34,13 @@ func (in loginInput) toSite() (sites.Site, error) {
 		s.Port = n
 	}
 	s.AutoSignon = s.User != "" && s.Password != ""
-	return s.WithDefaults(), nil
+	if s.Port == 0 { // size, code page and device name come from the defaults when connecting
+		s.Port = 23
+		if s.TLS {
+			s.Port = 992
+		}
+	}
+	return s, nil
 }
 
 func readLoginForm(f *tview.Form) loginInput {
@@ -46,7 +52,7 @@ func readLoginForm(f *tview.Form) loginInput {
 }
 
 // newLoginForm builds the login form.
-func newLoginForm(onConnect func(site sites.Site, save bool), onCancel func(), onError func(string)) *tview.Form {
+func newLoginForm(onConnect func(site sites.Site, save bool), onCancel func(), onSettings func(), onError func(string)) *tview.Form {
 	f := tview.NewForm()
 	f.AddInputField("Host", "", 40, nil, nil)
 	f.AddInputField("Port", "", 8, tview.InputFieldInteger, nil)
@@ -63,6 +69,7 @@ func newLoginForm(onConnect func(site sites.Site, save bool), onCancel func(), o
 		}
 		onConnect(site, site.Name != "")
 	})
+	f.AddButton("Settings", onSettings)
 	f.AddButton("Cancel", onCancel)
 	f.SetCancelFunc(onCancel)
 	return f
@@ -89,6 +96,7 @@ func (a *App) showLogin() {
 			a.connectTo(site, "")
 		},
 		func() { a.closeNamed("login") },
+		a.showSettings,
 		func(msg string) { form.SetTitle(" " + msg + " ") },
 	)
 	form.SetBorder(true).SetTitle(" Connect ")

@@ -127,6 +127,7 @@ func CommandHelp() [][2]string {
 		{"connect [site|host[:port]] [--tls]", "connect (no argument: reconnect, or the login form)"},
 		{"disconnect", "close the connection"},
 		{"sites", "site manager: add, edit, delete, connect"},
+		{"settings", "defaults page: size, code page, device name, separators, SEU colours, sign-on, trace, keep-alive"},
 		{"signon", "typed sign-on with the site's user and password"},
 		{"key <action>", "press any action (pf13, fieldExit, sysreq, ...); :<action> works too"},
 		{"send <text>", "type text, then Enter"},
@@ -165,6 +166,9 @@ func (a *App) execute(line string) string {
 		return "Disconnected"
 	case "sites":
 		a.showSites()
+		return ""
+	case "settings":
+		a.showSettings()
 		return ""
 	case "signon":
 		if err := a.signon(); err != nil {

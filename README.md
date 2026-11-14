@@ -78,6 +78,7 @@ Open the command bar with `:` (when the cursor is not in an input field) or with
 | `connect [site\|host[:port]] [--tls]` | Connect to a site or host |
 | `disconnect` | Close the connection |
 | `sites` | Site manager: list, add, edit, delete, connect |
+| `settings` | Settings page: screen size, code page, device name, column separators, SEU colouring, auto sign-on, trace file, keep-alive; saved as `defaults` in sites.json (also: `s` in the site list, Settings button on the login form) |
 | `signon` | Typed sign-on now |
 | `key <action>` | Press any action (`enter`, `pf13`, `reset`, `sysreq`, ...) |
 | `send <text>` | Type the text into the field and press Enter |

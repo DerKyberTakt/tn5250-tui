@@ -24,9 +24,10 @@ type Options struct {
 	Host                string
 	Port                int
 	TLS                 bool
-	TrustAnyCertificate bool // accept any certificate (self-signed hosts)
-	TimeoutMs           int  // dial timeout, 0 = 15 s
-	KeepAlive           bool // TCP keep-alive probes
+	TrustAnyCertificate bool          // accept any certificate (self-signed hosts)
+	TimeoutMs           int           // dial timeout, 0 = 15 s
+	KeepAlive           bool          // TCP keep-alive probes
+	KeepAliveEvery      time.Duration // probe period; 0 = KeepAliveInterval
 
 	// OnData receives every chunk read from the socket, on the reader goroutine.
 	// The slice is only valid during the call.
@@ -64,6 +65,9 @@ func Dial(ctx context.Context, o Options) (*Conn, error) {
 	d := &net.Dialer{Timeout: timeout}
 	if o.KeepAlive {
 		d.KeepAlive = KeepAliveInterval
+		if o.KeepAliveEvery > 0 {
+			d.KeepAlive = o.KeepAliveEvery
+		}
 	} else {
 		d.KeepAlive = -1
 	}

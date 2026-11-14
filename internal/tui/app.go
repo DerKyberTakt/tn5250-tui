@@ -141,6 +141,8 @@ func New(opts AppOptions) *App {
 	}
 
 	a.screen = NewScreen(a.screenSource)
+	a.screen.Separators = opts.Sites.EffectiveDefaults().Separators
+	a.screen.Highlight = opts.Sites.EffectiveDefaults().SourceHighlight
 	a.oia = NewOIABar(a.oiaSource)
 	a.bar = tview.NewInputField().SetLabel(":").SetFieldWidth(0)
 	a.bar.SetBackgroundColor(oiaBg)
@@ -166,8 +168,12 @@ func (a *App) SetScreen(s tcell.Screen) { a.app.SetScreen(s) }
 
 // Run starts the application and blocks until it quits.
 func (a *App) Run() error {
-	if a.opts.TraceFile != "" {
-		if err := a.traceOn(a.opts.TraceFile); err != nil {
+	trace := a.opts.TraceFile
+	if trace == "" {
+		trace = a.opts.Sites.EffectiveDefaults().TraceFile
+	}
+	if trace != "" {
+		if err := a.traceOn(trace); err != nil {
 			return err
 		}
 	}
@@ -460,7 +466,7 @@ func (a *App) connectTo(site sites.Site, saved string) {
 // template (see nextDeviceName); attempt 0 is the user's own connect, later ones retry after
 // the host refused the name.
 func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
-	site = site.WithDefaults()
+	site = a.opts.Sites.Complete(site)
 	a.mu.Lock()
 	if a.sizeOv != "" {
 		site.ScreenSize = a.sizeOv
@@ -510,6 +516,7 @@ func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
 	}
 	trace := a.traceW
 	a.mu.Unlock()
+	keepEvery := time.Duration(a.opts.Sites.EffectiveDefaults().KeepAliveSeconds) * time.Second
 
 	if saved != "" && attempt == 0 {
 		a.opts.Sites.LastUsed = saved
@@ -519,7 +526,7 @@ func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
 	go func() {
 		link, err := a.dialer.Dial(ctx, client.Options{
 			Host: site.Host, Port: site.Port, TLS: site.TLS, TrustAnyCertificate: site.TrustAnyCertificate,
-			TimeoutMs: 15000, KeepAlive: true, Trace: trace,
+			TimeoutMs: 15000, KeepAlive: true, KeepAliveEvery: keepEvery, Trace: trace,
 			OnData: s.onData, OnClosed: s.onClosed,
 		})
 		if err != nil {

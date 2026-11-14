@@ -4,6 +4,8 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/rivo/uniseg"
+
+	"github.com/DerKyberTakt/tn5250-tui/internal/highlight"
 )
 
 // The ACS palette on black.
@@ -61,8 +63,66 @@ type Screen struct {
 	// Separators (off by default: the dots broke up turquoise labels) draws column separators as a dim dot on blank separator cells
 	// when the whole screen fits (no horizontal scroll).
 	Separators bool
+	// Highlight colours the source lines of an SEU edit/browse screen (CL, DDS, RPG, SQL)
+	// like the emulators do; the host's colours stay everywhere else.
+	Highlight bool
 
 	scrollX, scrollY int
+
+	// The tokens of the last highlighted snapshot, keyed by its sequence number.
+	hlSeq          uint64
+	hlRows, hlCols int
+	hlToks         []highlight.Tok
+}
+
+// tokenColours maps the highlighter's token kinds to the palette, as the emulators do.
+var tokenColours = map[highlight.Tok]tcell.Color{
+	highlight.TokComment:   colBlue,
+	highlight.TokKeyword:   colTurquoise,
+	highlight.TokBuiltin:   colPink,
+	highlight.TokString:    colYellow,
+	highlight.TokNumber:    colWhite,
+	highlight.TokSpecial:   colPink,
+	highlight.TokVariable:  colWhite,
+	highlight.TokIndicator: colRed,
+	highlight.TokName:      colWhite,
+	highlight.TokMarker:    colBlue,
+	highlight.TokSpec:      colWhite,
+}
+
+// tokens returns one token per cell when Highlight is on and the snapshot is an SEU
+// screen, else nil. The result is cached per snapshot sequence (a sequence of 0 is
+// recomputed every time).
+func (s *Screen) tokens(snap Snapshot) []highlight.Tok {
+	if !s.Highlight {
+		s.hlToks = nil
+		s.hlSeq = 0
+		return nil
+	}
+	if snap.Seq != 0 && snap.Seq == s.hlSeq && snap.Rows == s.hlRows && snap.Cols == s.hlCols {
+		return s.hlToks
+	}
+	rowText := func(r int) string {
+		buf := make([]rune, snap.Cols)
+		for c := 0; c < snap.Cols; c++ {
+			ch := snap.At(r, c).Ch
+			if ch < ' ' {
+				ch = ' '
+			}
+			buf[c] = ch
+		}
+		return string(buf)
+	}
+	fields := make([]highlight.Field, len(snap.Fields))
+	for i, f := range snap.Fields {
+		fields[i] = highlight.Field{Start: f.Start, Length: f.Length, Bypass: f.Bypass}
+	}
+	toks, ok := highlight.ScreenFields(snap.Rows, snap.Cols, rowText, fields)
+	if !ok {
+		toks = nil
+	}
+	s.hlSeq, s.hlRows, s.hlCols, s.hlToks = snap.Seq, snap.Rows, snap.Cols, toks
+	return toks
 }
 
 // NewScreen returns a screen primitive that reads its content from source;
@@ -124,6 +184,7 @@ func (s *Screen) Draw(scr tcell.Screen) {
 		oy = (h - snap.Rows) / 2
 	}
 	fits := w >= snap.Cols
+	toks := s.tokens(snap)
 	for r := 0; r < snap.Rows; r++ {
 		sy := y + oy + r - s.scrollY
 		if sy < y || sy >= y+h {
@@ -152,6 +213,10 @@ func (s *Screen) Draw(scr tcell.Screen) {
 			} else if a.ColumnSeparators && s.Separators && fits && ch == ' ' && !a.Reverse {
 				ch = '·'
 				st = tcell.StyleDefault.Background(colBlack).Foreground(colDim)
+			} else if toks != nil {
+				if col, ok := tokenColours[toks[r*snap.Cols+c]]; ok {
+					st = st.Foreground(col)
+				}
 			}
 			scr.SetContent(sx, sy, ch, nil, st)
 		}

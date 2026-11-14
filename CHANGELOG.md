@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.1.0 - unreleased
+- SEU edit and browse screens are coloured by language (CL, DDS, RPG fixed and free, SQL incl. embedded) as the emulators do, from the same rules; off with the "SEU syntax colouring" setting.
+- :settings opens a small settings page (screen size, code page, device name, separators, SEU colouring, auto sign-on, trace file, keep-alive) saved as defaults in sites.json.
 - Shift+Esc sends System Request, as in the emulators (Ctrl+X stays).
 - New sites and host targets default to the 27x132 screen (IBM-3477-FC); `:size 24x80` or the site setting gives the small screen.
 - Screen: a null cell outside any field shows nothing, and the attribute position is a plain blank; the sign-on screen no longer has underlines running from the end of each field to the right edge (the rule the emulator learned on its first day).
