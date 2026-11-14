@@ -43,6 +43,23 @@ func TestKeyTable(t *testing.T) {
 		{"Ctrl+A", key(tcell.KeyCtrlA, 0, 0), "attn", ""},
 		{"Ctrl+X", key(tcell.KeyCtrlX, 0, 0), "sysreq", ""},
 		{"Ctrl+K", key(tcell.KeyCtrlK, 0, 0), ActCommandBar, ""},
+		// What the backends really post: the Windows console sends Ctrl+letter as a rune
+		// with ModCtrl, a Unix terminal sends the raw control byte; tcell turns both into
+		// KeyCtrlX with ModCtrl set.
+		{"Ctrl+K (Windows)", tcell.NewEventKey(tcell.KeyRune, 'k', tcell.ModCtrl), ActCommandBar, ""},
+		{"Ctrl+K (raw 0x0b)", tcell.NewEventKey(tcell.KeyRune, 0x0b, 0), ActCommandBar, ""},
+		{"Ctrl+X (Windows)", tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModCtrl), "sysreq", ""},
+		{"Ctrl+R (Windows)", tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModCtrl), "reset", ""},
+		{"Ctrl+E (Windows)", tcell.NewEventKey(tcell.KeyRune, 'e', tcell.ModCtrl), "eraseEof", ""},
+		{"Ctrl+A (Windows)", tcell.NewEventKey(tcell.KeyRune, 'a', tcell.ModCtrl), "attn", ""},
+		{"Ctrl+Q (Windows)", tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModCtrl), ActQuit, ""},
+		{"Ctrl+Enter (Windows: Ctrl+M)", tcell.NewEventKey(tcell.KeyRune, 'm', tcell.ModCtrl), "fieldExit", ""},
+		{"Ctrl+J (terminal)", tcell.NewEventKey(tcell.KeyCtrlJ, 0, tcell.ModCtrl), "fieldExit", ""},
+		{"Ctrl+Backspace (Windows: DEL+Ctrl)", tcell.NewEventKey(tcell.KeyRune, 0x7f, tcell.ModCtrl), "eraseInput", ""},
+		{"Ctrl+K (terminal)", tcell.NewEventKey(tcell.KeyCtrlSpace+tcell.Key(0x0b), 0, tcell.ModCtrl), ActCommandBar, ""},
+		{"Enter (Windows)", tcell.NewEventKey(tcell.KeyRune, 0x0d, 0), "enter", ""},
+		{"Tab (raw)", tcell.NewEventKey(tcell.KeyRune, 0x09, 0), "tab", ""},
+		{"Esc (raw)", tcell.NewEventKey(tcell.KeyRune, 0x1b, 0), "attn", ""},
 		{"Ctrl+Q", key(tcell.KeyCtrlQ, 0, 0), ActQuit, ""},
 		{"Ctrl+Enter", key(tcell.KeyEnter, 0, tcell.ModCtrl), "fieldExit", ""},
 		{"Shift+Enter", key(tcell.KeyEnter, 0, tcell.ModShift), "fieldExit", ""},

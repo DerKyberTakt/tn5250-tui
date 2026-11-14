@@ -54,6 +54,8 @@ var KeyTable = []Binding{
 	{tcell.KeyEnter, tcell.ModCtrl, "fieldExit", "Field Exit"},
 	{tcell.KeyEnter, tcell.ModShift, "fieldExit", "Field Exit"},
 	{tcell.KeyEnter, tcell.ModCtrl | tcell.ModShift, "fieldExit", "Field Exit"},
+	// The Windows console delivers Ctrl+Enter as Ctrl+M.
+	{tcell.KeyCtrlM, 0, "fieldExit", "Field Exit"},
 	{tcell.KeyCtrlJ, 0, "fieldExit", "Field Exit (Ctrl+Enter sends LF on many terminals)"},
 	{tcell.KeyTab, 0, "tab", "Tab"},
 	{tcell.KeyBacktab, 0, "backtab", "Backtab"},
@@ -72,6 +74,8 @@ var KeyTable = []Binding{
 	{tcell.KeyBackspace2, 0, "backspace", "Backspace"},
 	{tcell.KeyBackspace, tcell.ModCtrl, "eraseInput", "Erase Input"},
 	{tcell.KeyBackspace2, tcell.ModCtrl, "eraseInput", "Erase Input"},
+	// tcell folds Backspace2 (DEL) onto Backspace, so Ctrl+Backspace arrives on that code.
+	{tcell.KeyBackspace, tcell.ModCtrl, "eraseInput", "Erase Input"},
 	{tcell.KeyPgUp, 0, "pageUp", "Roll up (Page Up)"},
 	{tcell.KeyPgDn, 0, "pageDown", "Roll down (Page Down)"},
 	{tcell.KeyEscape, 0, "attn", "Attention"},
@@ -113,20 +117,43 @@ func KeyAction(ev *tcell.EventKey) (action, text string, ok bool) {
 	}
 	mask := tcell.ModShift | tcell.ModCtrl | tcell.ModAlt | tcell.ModMeta
 	m := mod & mask
+	// tcell reports a Ctrl+letter chord as KeyCtrlA..KeyCtrlZ (64 + the letter) with the
+	// Ctrl modifier set as well, on Windows and on a terminal alike. The table lists
+	// those keys by their code alone, so the modifier is dropped. A raw control byte
+	// (what the simulation screen injects) is the same chord by another number and is
+	// folded onto the same code; Enter, Tab, Esc and Backspace are typed without Ctrl,
+	// so a Ctrl on them is a real chord and stays.
+	k := ev.Key()
+	if isRawControl(k) {
+		k = tcell.KeyCtrlSpace + k
+	}
+	if k >= tcell.KeyCtrlSpace && k <= tcell.KeyCtrlUnderscore {
+		m &^= tcell.ModCtrl
+	}
 	for _, b := range KeyTable {
-		if b.Key == ev.Key() && b.Mod == m {
+		if b.Key == k && b.Mod == m {
 			return b.Action, "", true
 		}
 	}
 	// A bound key with extra Shift is still the same key (e.g. Shift+Arrow).
 	if m&^tcell.ModShift == 0 {
 		for _, b := range KeyTable {
-			if b.Key == ev.Key() && b.Mod == 0 {
+			if b.Key == k && b.Mod == 0 {
 				return b.Action, "", true
 			}
 		}
 	}
 	return "", "", false
+}
+
+// isRawControl reports whether k is a raw control byte (KeyNUL..KeyUS) other than the
+// ones typed without Ctrl (Enter, Tab, Esc, Backspace).
+func isRawControl(k tcell.Key) bool {
+	switch k {
+	case tcell.KeyEnter, tcell.KeyTab, tcell.KeyEscape, tcell.KeyBackspace:
+		return false
+	}
+	return k < tcell.Key(' ')
 }
 
 // HelpKeys returns "key  description" lines for the help modal, built from
@@ -142,7 +169,7 @@ func HelpKeys() [][2]string {
 		{"Insert, Delete, Backspace", "insert mode, delete, backspace"},
 		{"PgUp / PgDn", "Roll up / Roll down"},
 		{"Esc, Ctrl+A", "Attention"},
-		{"Ctrl+X", "System Request"},
+		{"Ctrl+X, Shift+Esc", "System Request (Shift+Esc where the terminal reports Shift with Esc)"},
 		{"Ctrl+R", "Reset (clears an error)"},
 		{"Ctrl+E", "Erase to end of field"},
 		{"Ctrl+Backspace", "Erase Input"},
