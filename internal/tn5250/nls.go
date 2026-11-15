@@ -3,7 +3,7 @@ package tn5250
 import "strings"
 
 // hostNLS holds the NEW-ENVIRON values that go with a host code page (RFC 4777 section 4:
-// KBDTYPE, CODEPAGE and CHARSET are USERVARs sent with DEVNAME; CODEPAGE and CHARSET are only
+// KBDTYPE, CODEPAGE and CHARSET are USERVARs sent with or without DEVNAME; CODEPAGE and CHARSET are only
 // used when a KBDTYPE goes with them, otherwise the host takes its system values).
 //
 // CHARSET is the graphic character set id of the CCSID; KBDTYPE the 3-letter keyboard type of

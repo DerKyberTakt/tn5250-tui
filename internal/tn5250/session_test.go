@@ -39,14 +39,18 @@ func replayCapture(t *testing.T, h *harness) capture {
 func TestSessionRendersPUB400SignOn(t *testing.T) {
 	h := newHarness(t, Options{ScreenSize: "27x132", CodePage: 37})
 	c := replayCapture(t, h)
-	if got := strings.Join(h.wire, ""); got != c.outboundHex() {
-		t.Fatalf("wire bytes differ:\n got %s\nwant %s", got, c.outboundHex())
+	// The capture was recorded before the client sent its keyboard type without a device
+	// name: its NEW-ENVIRON reply is empty, ours carries KBDTYPE USB, CODEPAGE 37, CHARSET 697.
+	const nls37 = "034b4244545950450155534203434f444550414745013337034348415253455401363937"
+	fix := func(hex string) string { return strings.Replace(hex, "fffa2700fff0", "fffa2700"+nls37+"fff0", 1) }
+	if got := strings.Join(h.wire, ""); got != fix(c.outboundHex()) {
+		t.Fatalf("wire bytes differ:\n got %s\nwant %s", got, fix(c.outboundHex()))
 	}
 	// Event by event too: what we sent, in order, is what the capture recorded.
 	var want []string
 	for _, ev := range c.Events {
 		if ev.Dir == "out" {
-			want = append(want, ev.Hex)
+			want = append(want, fix(ev.Hex))
 		}
 	}
 	if strings.Join(h.wire, "|") != strings.Join(want, "|") {

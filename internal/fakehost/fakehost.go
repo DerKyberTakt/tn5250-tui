@@ -106,6 +106,12 @@ func (m Mismatch) String() string {
 		m.Conn, m.Event, m.Offset, m.Want, m.Got)
 }
 
+// isEnvironIS reports whether an expected chunk is a whole NEW-ENVIRON IS subnegotiation
+// (IAC SB 0x27 IS ... IAC SE).
+func isEnvironIS(b []byte) bool {
+	return len(b) >= 6 && b[0] == 0xff && b[1] == 0xfa && b[2] == 0x27 && b[3] == 0x00 && b[len(b)-2] == 0xff && b[len(b)-1] == 0xf0
+}
+
 // Server is a running fake host.
 type Server struct {
 	// Logf receives log lines (default log.Printf). Set it before clients connect.
@@ -226,25 +232,59 @@ func (s *Server) serve(c net.Conn, n int) {
 			continue
 		}
 		deadline := time.Now().Add(s.opt.Timeout)
-		for len(pending) < len(want) {
-			// Fail early on a wrong prefix instead of waiting out the timeout.
-			if !bytes.Equal(pending, want[:len(pending)]) {
-				break
-			}
-			_ = c.SetReadDeadline(deadline)
-			r, err := c.Read(buf)
-			pending = append(pending, buf[:r]...)
-			if err != nil {
-				if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		if isEnvironIS(want) {
+			// A NEW-ENVIRON IS reply (IAC SB NEW-ENVIRON IS ... IAC SE) is matched by its
+			// framing, not its content: the capture recorded an empty one, the client sends
+			// its keyboard type and code page, and a device name when it has one.
+			end := -1
+			for end < 0 {
+				if n := len(pending); n >= 4 {
+					if !bytes.Equal(pending[:4], want[:4]) {
+						break
+					}
+					if j := bytes.Index(pending[4:], []byte{0xff, 0xf0}); j >= 0 {
+						end = 4 + j + 2
+						break
+					}
+				} else if !bytes.Equal(pending, want[:n]) {
 					break
 				}
-				return // closed
+				_ = c.SetReadDeadline(deadline)
+				r, err := c.Read(buf)
+				pending = append(pending, buf[:r]...)
+				if err != nil {
+					if ne, ok := err.(net.Error); ok && ne.Timeout() {
+						break
+					}
+					return // closed
+				}
 			}
-		}
-		_ = c.SetReadDeadline(time.Time{})
-		if len(pending) >= len(want) && bytes.Equal(pending[:len(want)], want) {
-			pending = pending[len(want):]
-			continue
+			_ = c.SetReadDeadline(time.Time{})
+			if end > 0 {
+				pending = pending[end:]
+				continue
+			}
+		} else {
+			for len(pending) < len(want) {
+				// Fail early on a wrong prefix instead of waiting out the timeout.
+				if !bytes.Equal(pending, want[:len(pending)]) {
+					break
+				}
+				_ = c.SetReadDeadline(deadline)
+				r, err := c.Read(buf)
+				pending = append(pending, buf[:r]...)
+				if err != nil {
+					if ne, ok := err.(net.Error); ok && ne.Timeout() {
+						break
+					}
+					return // closed
+				}
+			}
+			_ = c.SetReadDeadline(time.Time{})
+			if len(pending) >= len(want) && bytes.Equal(pending[:len(want)], want) {
+				pending = pending[len(want):]
+				continue
+			}
 		}
 		k := len(pending)
 		if k > len(want) {

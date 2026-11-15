@@ -272,9 +272,16 @@ func TestTelnetNewEnvironDeviceName(t *testing.T) {
 	if !strings.HasPrefix(text, "\xff\xfa\x27\x00\x03DEVNAME") || !strings.HasSuffix(text, "\xff\xf0") {
 		t.Errorf("framing: %q", text)
 	}
-	// Without a device name the host assigns one: the reply is empty.
-	if got := envReply(t, telnetOptions{terminalType: "IBM-3179-2", codePage: 37}); got != "\xff\xfa\x27\x00\xff\xf0" {
-		t.Errorf("no device name: %q", got)
+	// Without a device name the host names the device; the keyboard type and character
+	// set still go out, so the host builds its QPADEVnnnn with them.
+	noName := envReply(t, telnetOptions{terminalType: "IBM-3179-2", codePage: 870})
+	if strings.Contains(noName, "DEVNAME") || !strings.HasPrefix(noName, "\xff\xfa\x27\x00\x03KBDTYPE\x01CSB") {
+		t.Errorf("no device name: %q", noName)
+	}
+	for _, want := range []string{"CODEPAGE\x01870", "CHARSET\x01959"} {
+		if !strings.Contains(noName, want) {
+			t.Errorf("no device name: reply lacks %q", want)
+		}
 	}
 }
 

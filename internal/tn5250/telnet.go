@@ -230,19 +230,21 @@ func asciiBytes(s string) []byte {
 }
 
 func (t *telnetSession) environmentReply() []byte {
-	name := strings.ToUpper(strings.TrimSpace(t.opts.deviceName))
-	if name == "" {
-		return nil
-	}
 	uservar := func(out []byte, k, v string) []byte {
 		out = append(out, neUSERVAR)
 		out = append(out, asciiBytes(k)...)
 		out = append(out, neVALUE)
 		return append(out, asciiBytes(v)...)
 	}
-	out := uservar(nil, "DEVNAME", name)
-	// KBDTYPE, CODEPAGE and CHARSET belong together (RFC 4777); a code page the table does
-	// not know sends none of them and the host uses its system values.
+	var out []byte
+	if name := strings.ToUpper(strings.TrimSpace(t.opts.deviceName)); name != "" {
+		out = uservar(out, "DEVNAME", name)
+	}
+	// KBDTYPE, CODEPAGE and CHARSET belong together (RFC 4777 section 4: the last two only
+	// count beside a KBDTYPE) and go with or without a device name: the host gives the
+	// virtual device it creates (QPADEVnnnn too) that keyboard type and character set, which
+	// is what turns the job's CCSID into the right letters on the screen. A code page the
+	// table does not know sends none of them and the host uses its system values.
 	if t.opts.codePage != 0 {
 		if nls, ok := lookupNLS(t.opts.codePage, t.opts.keyboardType); ok {
 			out = uservar(out, "KBDTYPE", nls.kbdType)
