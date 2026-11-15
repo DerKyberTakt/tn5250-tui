@@ -58,6 +58,9 @@ func runMCP(args []string) int {
 		fmt.Fprintf(os.Stderr, "tn5250-tui mcp: sites file %s: %v\n", sites.Path(), err)
 		return 1
 	}
+	for _, w := range f.Warnings {
+		fmt.Fprintln(os.Stderr, "tn5250-tui mcp:", w)
+	}
 	cfg := agent.Config{Sites: f, Site: *site, TLS: *useTLS, TrustAny: *trustAny, User: *user, Password: *password,
 		ScreenSize: *size, CodePage: *codePage, DeviceName: *device, AuditFile: *audit, ReadOnly: *readOnly, MaxSessions: *maxSessions}
 	if *host != "" {

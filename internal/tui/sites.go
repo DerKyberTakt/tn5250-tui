@@ -68,15 +68,19 @@ func sizeIndex(size string) int {
 	return 0
 }
 
-// addPasswordField adds a Password input plus a "Mask password" checkbox.
+// addPasswordField adds a Password input (masked, like the sign-on screen) plus a
+// "Show password" checkbox.
 func addPasswordField(f *tview.Form, value string) {
 	f.AddInputField("Password", value, 30, nil, nil)
-	f.AddCheckbox("Mask password", false, func(on bool) {
+	if it, ok := f.GetFormItemByLabel("Password").(*tview.InputField); ok {
+		it.SetMaskCharacter('*')
+	}
+	f.AddCheckbox("Show password", false, func(on bool) {
 		if it, ok := f.GetFormItemByLabel("Password").(*tview.InputField); ok {
 			if on {
-				it.SetMaskCharacter('*')
-			} else {
 				it.SetMaskCharacter(0)
+			} else {
+				it.SetMaskCharacter('*')
 			}
 		}
 	})

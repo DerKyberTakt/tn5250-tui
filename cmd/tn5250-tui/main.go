@@ -74,6 +74,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "tn5250-tui: sites file %s: %v\n", sites.Path(), err)
 		os.Exit(1)
 	}
+	for _, w := range f.Warnings {
+		fmt.Fprintln(os.Stderr, "tn5250-tui:", w)
+	}
 
 	app := tui.New(tui.AppOptions{
 		EngineFactory: newEngine,

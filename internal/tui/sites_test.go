@@ -39,12 +39,12 @@ func TestSiteFormRoundTrip(t *testing.T) {
 	var errMsg string
 	in := sites.Site{Name: "pub", Host: "PUB400.COM", Port: 992, TLS: true, User: "U", Password: "pw", ScreenSize: "27x132", CodePage: 273, DeviceName: "DEV", AutoSignon: true}
 	f := newSiteForm(in, func(s sites.Site) { saved = &s }, func() {}, func(m string) { errMsg = m })
-	// the form shows the plain password unless the mask box is ticked
+	// the form masks the password unless the show box is ticked
 	pw := f.GetFormItemByLabel("Password").(*tview.InputField)
 	if pw.GetText() != "pw" {
 		t.Fatalf("password field %q", pw.GetText())
 	}
-	f.GetFormItemByLabel("Mask password").(*tview.Checkbox).SetChecked(true)
+	f.GetFormItemByLabel("Show password").(*tview.Checkbox).SetChecked(true)
 	f.GetFormItemByLabel("Port").(*tview.InputField).SetText("23")
 	pressButton(f, "Save")
 	if saved == nil || errMsg != "" {

@@ -39,14 +39,14 @@ tn5250-tui --site NAME        # a saved site
 tn5250-tui --trace FILE host  # write a protocol trace
 ```
 
-Sites live in a plain JSON file:
+Sites live in a JSON file:
 
 | OS | Path |
 | --- | --- |
 | Linux | `$XDG_CONFIG_HOME/tn5250-tui/sites.json` (default `~/.config/tn5250-tui/sites.json`) |
 | Windows | `%APPDATA%\tn5250-tui\sites.json` |
 
-The password is stored in clear text, by design: no credential manager, just a file (mode 0600 on Linux). Do not put it anywhere other people can read it.
+Passwords are not in that file. They go to the operating system's secret store (Windows Credential Manager, macOS Keychain, Linux Secret Service such as GNOME Keyring or KWallet) under the service `tn5250-tui`, and the file carries only `"password": "keyring:"`. On a Linux box without a secret store (headless, a container, an SSH session without D-Bus) the password is encrypted with AES-256-GCM under a random key in `secret.key` next to the sites file (mode 0600; a key file other users can read is refused) and stored as `"enc:..."`. That is protection against copies, backups and sync of the sites file, not a boundary: whoever runs as you can read the key. A clear-text password in the file (a 0.1.0 file, or one the VS Code extension's Enroll wrote) is moved into the store the next time `tn5250-tui`, `tn5250-tui mcp` or `tn5250-tui import` loads the file. `TN5250_TUI_SECRETS=file` forces the encrypted file, `=plain` the old clear text (your call). On Windows the Credential Manager is always used; if it is not usable the error says so rather than falling back. The wire is a separate matter: without TLS the password crosses the network in clear text.
 
 To add a site, type `:sites` and choose add, or fill in the login form (Host, Port, TLS, User, Password) and give it a name under "Save as site". A site holds: name, host, port, tls, trustAnyCertificate, user, password, screenSize (`24x80` or `27x132`), codePage, deviceName, autoSignon. With autoSignon on, the user and password are typed into the first two input fields of the first screen (the second must be non-display) and Enter is pressed.
 

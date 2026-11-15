@@ -160,3 +160,78 @@ func TestFileDefaultsBeforeBuiltin(t *testing.T) {
 		t.Fatal("nil file")
 	}
 }
+
+func TestPasswordsNeverStayPlainOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "sites.json")
+	t.Setenv(EnvConfig, p)
+	UseStore(nil) // fresh memory store (tests)
+	// A file written by 0.1.0 or by the VS Code extension's Enroll: clear text.
+	legacy := `{"sites":[{"name":"agent","host":"PUB400.COM","port":992,"tls":true,"user":"U","password":"topsecret","autoSignon":true},{"name":"nopw","host":"h"}],"lastUsed":"agent"}`
+	if err := os.WriteFile(p, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := f.Find("agent"); s.Password != "topsecret" || !s.AutoSignon {
+		t.Fatalf("in memory %+v", s)
+	}
+	if len(f.Warnings) != 0 {
+		t.Fatalf("warnings %v", f.Warnings)
+	}
+	disk, _ := os.ReadFile(p)
+	if strings.Contains(string(disk), "topsecret") {
+		t.Fatalf("clear text survived the first load:\n%s", disk)
+	}
+	if !strings.Contains(string(disk), `"password": "keyring:"`) {
+		t.Fatalf("expected the keyring marker:\n%s", disk)
+	}
+	// Reload: the plain password is back in memory, and saving again keeps the marker.
+	g, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := g.Find("AGENT"); s.Password != "topsecret" {
+		t.Fatalf("reload %+v", s)
+	}
+	g.Upsert(Site{Name: "two", Host: "h2", Password: "second"})
+	if err := g.Save(); err != nil {
+		t.Fatal(err)
+	}
+	disk, _ = os.ReadFile(p)
+	if strings.Contains(string(disk), "topsecret") || strings.Contains(string(disk), "second") {
+		t.Fatalf("clear text on save:\n%s", disk)
+	}
+	// Delete forgets the stored password: the marker alone no longer opens.
+	g.Delete("agent")
+	if _, err := Secrets().Open("agent", "keyring:"); err == nil {
+		t.Fatal("deleted site's password still in the store")
+	}
+	// A marker whose secret is gone loads as an empty password with a warning.
+	if err := os.WriteFile(p, []byte(`{"sites":[{"name":"lost","host":"h","password":"keyring:"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := h.Find("lost"); s.Password != "" || len(h.Warnings) != 1 || !strings.Contains(h.Warnings[0], "lost") {
+		t.Fatalf("lost secret: %+v warnings=%v", s, h.Warnings)
+	}
+}
+
+func TestEmptyPasswordStaysEmpty(t *testing.T) {
+	t.Setenv(EnvConfig, filepath.Join(t.TempDir(), "sites.json"))
+	UseStore(nil)
+	f := &File{}
+	f.Upsert(Site{Name: "a", Host: "h"})
+	if err := f.Save(); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := Load()
+	if s, _ := g.Find("a"); s.Password != "" {
+		t.Fatalf("%+v", s)
+	}
+}

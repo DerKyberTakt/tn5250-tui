@@ -1,5 +1,7 @@
-// Package sites stores the list of 5250 systems the terminal knows about as a
-// plain JSON file. The password is kept in clear text by design.
+// Package sites stores the list of 5250 systems the terminal knows about as a JSON file.
+// Passwords are not kept in it: Load opens them from the secrets store (OS keyring, or an
+// encrypted file where there is none) and Save seals them back, so in memory a Site always
+// carries the plain password and on disk only a marker or ciphertext (see package secrets).
 package sites
 
 import (
@@ -10,7 +12,32 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+
+	"github.com/DerKyberTakt/tn5250-tui/internal/secrets"
 )
+
+var (
+	storeMu sync.Mutex
+	store   secrets.Store
+)
+
+// Secrets returns the password store for the sites file's directory.
+func Secrets() secrets.Store {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	if store == nil {
+		store = secrets.New(filepath.Dir(Path()))
+	}
+	return store
+}
+
+// UseStore replaces the password store (tests, or a caller with its own).
+func UseStore(s secrets.Store) {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	store = s
+}
 
 // EnvConfig overrides the sites file path (used by tests).
 const EnvConfig = "TN5250_TUI_CONFIG"
@@ -33,6 +60,10 @@ type Site struct {
 	Demo      bool   `json:"demo,omitempty"`
 	DemoLabel string `json:"demoLabel,omitempty"`
 }
+
+// sealed remembers the stored form last written for a site's password, so Save does not
+// rewrite the keyring entry when nothing changed.
+type sealed struct{ plain, stored string }
 
 // Watermark is a text drawn in a dim colour on the blank parts of the screen.
 type Watermark struct {
@@ -83,6 +114,10 @@ type File struct {
 	Sites    []Site    `json:"sites"`
 	LastUsed string    `json:"lastUsed"`
 	Defaults *Defaults `json:"defaults,omitempty"`
+	// Warnings collects what Load could not do (a password the store has lost); show them once.
+	Warnings []string `json:"-"`
+
+	sealedForms map[string]sealed
 }
 
 // Built-in defaults.
@@ -158,7 +193,42 @@ func LoadFrom(path string) (*File, error) {
 	if err := json.Unmarshal(data, f); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	f.open(path)
 	return f, nil
+}
+
+// open replaces the stored password forms with the plain passwords. A legacy clear-text
+// password is sealed and the file rewritten at once, so a sites file never keeps one for
+// longer than the first start after an upgrade (or after the VS Code extension wrote it).
+// A password the store has lost is cleared and reported in Warnings, not fatal.
+func (f *File) open(path string) {
+	st := Secrets()
+	f.sealedForms = map[string]sealed{}
+	migrate := false
+	for i := range f.Sites {
+		s := &f.Sites[i]
+		stored := s.Password
+		if stored == "" {
+			continue
+		}
+		if secrets.Plain(stored) {
+			migrate = true
+			continue
+		}
+		plain, err := st.Open(s.Name, stored)
+		if err != nil {
+			f.Warnings = append(f.Warnings, err.Error())
+			s.Password = ""
+			continue
+		}
+		s.Password = plain
+		f.sealedForms[strings.ToLower(s.Name)] = sealed{plain, stored}
+	}
+	if migrate {
+		if err := f.SaveTo(path); err != nil {
+			f.Warnings = append(f.Warnings, "passwords are still in clear text in "+path+": "+err.Error())
+		}
+	}
 }
 
 // Save writes the file to Path() with mode 0600, creating the directory.
@@ -172,7 +242,11 @@ func (f *File) SaveTo(path string) error {
 	if f.Sites == nil {
 		f.Sites = []Site{}
 	}
-	data, err := json.MarshalIndent(f, "", "  ")
+	out, err := f.sealedCopy()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -185,6 +259,32 @@ func (f *File) SaveTo(path string) error {
 		return err
 	}
 	return nil
+}
+
+// sealedCopy returns the file with every password replaced by its stored form.
+func (f *File) sealedCopy() (*File, error) {
+	st := Secrets()
+	if f.sealedForms == nil {
+		f.sealedForms = map[string]sealed{}
+	}
+	out := *f
+	out.Sites = make([]Site, len(f.Sites))
+	copy(out.Sites, f.Sites)
+	for i := range out.Sites {
+		s := &out.Sites[i]
+		key := strings.ToLower(s.Name)
+		if c, ok := f.sealedForms[key]; ok && c.plain == s.Password {
+			s.Password = c.stored
+			continue
+		}
+		stored, err := st.Seal(s.Name, s.Password)
+		if err != nil {
+			return nil, fmt.Errorf("site %q: %w", s.Name, err)
+		}
+		f.sealedForms[key] = sealed{s.Password, stored}
+		s.Password = stored
+	}
+	return &out, nil
 }
 
 // Find returns the site called name (case-insensitive).
@@ -216,6 +316,8 @@ func (f *File) Delete(name string) bool {
 			if strings.EqualFold(f.LastUsed, name) {
 				f.LastUsed = ""
 			}
+			_ = Secrets().Forget(name)
+			delete(f.sealedForms, strings.ToLower(name))
 			return true
 		}
 	}
