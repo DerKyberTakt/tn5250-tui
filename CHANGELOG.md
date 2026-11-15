@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.1.0 - unreleased
+- Forms: Up/Down move between fields like Tab/Shift+Tab (a drop-down opens with Enter, not with the arrows); the focused field is lit white with a yellow label; Ctrl+S saves the site and settings forms. Scroll bars on the site list, help, SQL messages and local pane when they overflow.
 - SQL runner: `:sql [site]` opens a tab with a script editor and a result grid over the host's database and remote command servers (ported from the desktop app's Go host-server client). SQL, CL commands and Qshell lines mix in one script and each runs as what it looks like (`runscript.Classify`; `SQL:`/`CL:`/`QSH:` prefixes override); F5 runs the statement at the cursor, F9 the script, PgDn fetches the next 100 rows, Esc cancels; CL spooled output and Qshell output come back as rows.
 - Local command line: `:!<command>` runs a command on this machine and streams its output into a pane under the screen (`:local` show/hide/clear); `:sh` suspends the terminal into your shell and comes back on `exit`, sessions stay connected.
 - Split view: `:split [n]` / Ctrl+\ shows a second tab beside the active one (divider, each pane half the width, the other pane's tab underlined in the bar); `:split` again or Ctrl+\ moves the keyboard to the other pane, `:unsplit` goes back to one pane.

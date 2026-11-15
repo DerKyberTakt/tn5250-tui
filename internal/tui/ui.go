@@ -210,8 +210,9 @@ func (a *App) showHelp() {
 	if a.topOverlay() == "help" {
 		return
 	}
-	tv := tview.NewTextView().SetText(HelpText()).SetScrollable(true)
+	tv := tview.NewTextView().SetText(HelpText()).SetScrollable(true).SetWrap(false)
 	tv.SetBorder(true).SetTitle(" Help ")
+	scrollbar(tv.Box, true, textRows(tv, false))
 	tv.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 		switch ev.Key() {
 		case tcell.KeyEscape, tcell.KeyEnter:

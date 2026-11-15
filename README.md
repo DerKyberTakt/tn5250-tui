@@ -50,6 +50,8 @@ Passwords are not in that file. They go to the operating system's secret store (
 
 To add a site, type `:sites` and choose add, or fill in the login form (Host, Port, TLS, User, Password) and give it a name under "Save as site". A site holds: name, host, port, tls, trustAnyCertificate, user, password, screenSize (`24x80` or `27x132`), codePage, deviceName, autoSignon. With autoSignon on, the user and password are typed into the first two input fields of the first screen (the second must be non-display) and Enter is pressed.
 
+**Forms** (login, site, settings): Tab and Shift+Tab or Down and Up move between the fields; the field that has the cursor is lit in white, the others stay blue. A drop-down opens with Enter (or a typed letter) and only then do the arrows pick from its list. Ctrl+S saves the site or settings form, Esc cancels. Lists taller than their window (the site list, help, the SQL messages, the local pane) show a scroll bar on the right.
+
 ## Keys
 
 | Key | 5250 key |

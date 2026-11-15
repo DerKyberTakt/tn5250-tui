@@ -153,6 +153,7 @@ func New(opts AppOptions) *App {
 		a.dialer = NetDialer{}
 	}
 	a.app = tview.NewApplication()
+	a.app.SetAfterDrawFunc(a.afterDraw)
 	a.post = func(f func()) {
 		if a.stopped.Load() {
 			return

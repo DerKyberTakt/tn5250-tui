@@ -72,6 +72,7 @@ func newLoginForm(onConnect func(site sites.Site, save bool), onCancel func(), o
 	f.AddButton("Settings", onSettings)
 	f.AddButton("Cancel", onCancel)
 	f.SetCancelFunc(onCancel)
+	prepForm(f, nil)
 	return f
 }
 

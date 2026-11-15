@@ -65,6 +65,7 @@ func newLocalPane() *localPane {
 	v.SetBackgroundColor(oiaBg)
 	v.SetTextColor(oiaFg)
 	v.SetBorder(false)
+	scrollbar(v.Box, false, textRows(v, false))
 	return &localPane{view: v}
 }
 

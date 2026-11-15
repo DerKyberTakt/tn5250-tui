@@ -67,6 +67,7 @@ func newSQLTool(a *App, tab *conn, site sites.Site, name, naming string) *sqlToo
 	t.out = tview.NewTextView().SetDynamicColors(false).SetScrollable(true).SetWrap(true)
 	t.out.SetBackgroundColor(oiaBg)
 	t.out.SetTextColor(oiaFg)
+	scrollbar(t.out.Box, false, textRows(t.out, true))
 	t.root = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(t.editor, 0, 2, true).
 		AddItem(t.table, 0, 3, false).

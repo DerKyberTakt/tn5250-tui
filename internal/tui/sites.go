@@ -131,7 +131,7 @@ func newSiteForm(s sites.Site, onSave func(sites.Site), onCancel func(), onError
 	f.AddInputField("Device name", s.DeviceName, 12, nil, nil)
 	f.AddCheckbox("Auto sign-on", s.AutoSignon, nil)
 	f.AddCheckbox("Demo system", s.Demo, nil)
-	f.AddButton("Save", func() {
+	save := func() {
 		in := readSiteForm(f)
 		in.DemoLabel = s.DemoLabel
 		site, err := in.toSite()
@@ -140,9 +140,11 @@ func newSiteForm(s sites.Site, onSave func(sites.Site), onCancel func(), onError
 			return
 		}
 		onSave(site)
-	})
+	}
+	f.AddButton("Save", save)
 	f.AddButton("Cancel", onCancel)
 	f.SetCancelFunc(onCancel)
+	prepForm(f, save)
 	return f
 }
 
@@ -194,6 +196,7 @@ func (a *App) showSites() {
 	m := &siteManager{a: a, list: tview.NewList(), hint: tview.NewTextView()}
 	m.list.ShowSecondaryText(true).SetSelectedFocusOnly(true)
 	m.list.SetBorder(true).SetTitle(" Sites ")
+	scrollbar(m.list.Box, true, func(h int) (int, int) { return listRows(m.list, true, h) })
 	m.hint.SetTextColor(oiaAlert)
 	m.root = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(m.list, 0, 1, true).

@@ -49,9 +49,7 @@ func TestRunEndToEnd(t *testing.T) {
 	if !vis {
 		t.Error("cursor not shown")
 	}
-	if !simHas(sim, "Connected") {
-		t.Error("OIA line missing")
-	}
+	waitFor(t, "OIA line", func() bool { return simHas(sim, "Connected") }) // its frame can follow the screen's under load
 
 	e := r.engine()
 	e.clear()

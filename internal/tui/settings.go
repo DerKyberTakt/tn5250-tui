@@ -77,19 +77,21 @@ func newSettingsForm(d sites.Defaults, onSave func(sites.Defaults), onCancel fun
 	}
 	f.AddInputField("Keep-alive seconds", keep, 8, nil, nil)
 	f.AddTextView("Overrides", DescribeOverrides(d), 40, 1, false, false)
-	f.AddButton("Save", func() {
+	save := func() {
 		nd, err := readSettingsForm(f).toDefaults()
 		if err != nil {
 			onError(err.Error())
 			return
 		}
 		onSave(nd)
-	})
+	}
+	f.AddButton("Save", save)
 	f.AddButton("Cancel", onCancel)
 	if onImport != nil {
 		f.AddButton("Import VS Code", onImport)
 	}
 	f.SetCancelFunc(onCancel)
+	prepForm(f, save)
 	return f
 }
 
@@ -127,7 +129,7 @@ func (a *App) showSettings() {
 			a.mu.Unlock()
 		},
 	)
-	form.SetBorder(true).SetTitle(" Settings ")
+	form.SetBorder(true).SetTitle(" Settings   Ctrl+S save   Esc cancel ")
 	a.showOverlay("settings", form, 64, 23)
 }
 
