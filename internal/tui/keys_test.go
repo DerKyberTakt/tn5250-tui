@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -95,7 +96,7 @@ func TestEveryPFKeyBound(t *testing.T) {
 		}
 	}
 	for _, b := range KeyTable {
-		if b.Action == ActCommandBar || b.Action == ActQuit {
+		if strings.HasPrefix(b.Action, "app:") { // app pseudo actions (command bar, quit, tabs)
 			continue
 		}
 		if _, ok := LookupAction(b.Action); !ok {

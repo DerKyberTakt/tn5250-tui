@@ -66,8 +66,14 @@ To add a site, type `:sites` and choose add, or fill in the login form (Host, Po
 | Ctrl+R | Reset |
 | Ctrl+X, Shift+Esc | System Request (the terminal must report Shift with Esc: Windows console does, many Linux terminals send a plain Esc) |
 | Ctrl+K | Open the command bar |
+| Ctrl+T / Ctrl+W | New tab (site list) / close the tab |
+| Ctrl+PgUp / Ctrl+PgDn, Alt+1 - Alt+9 | Previous / next tab, tab by number |
 
 Field Exit, Field+ and Field- have no reliable key in a terminal; use `:key fieldExit`, `:key fieldPlus` and `:key fieldMinus`.
+
+## Sessions (tabs)
+
+Each connection is a tab. A tab bar appears above the screen once there are two: ` 1 PUB400  2 agent `, the active one in reverse video, a dropped one dimmed, a connecting one with `...`. Open another session from the site list (`:sites`, or Ctrl+T for a fresh tab with the list), with `:connect <site>` while this tab is connected, or with `:new <site>`. Switch with Ctrl+PgUp / Ctrl+PgDn or Alt+1 - Alt+9 (`:tab 2`, `:tab next`); Ctrl+W closes the tab (it asks when the tab is connected). Background tabs keep their sessions alive: a sign-on in progress finishes, and a dropped one says so when you come back.
 
 ## Commands
 
@@ -75,8 +81,11 @@ Open the command bar with `:` (when the cursor is not in an input field) or with
 
 | Command | What it does |
 | --- | --- |
-| `connect [site\|host[:port]] [--tls]` | Connect to a site or host |
-| `disconnect` | Close the connection |
+| `connect [site\|host[:port]] [--tls]` | Connect to a site or host: in this tab when it holds no connection, else in a new tab |
+| `new [site\|host[:port]] [--tls]` | Open a new tab (no argument: the site list) |
+| `tab <n>\|next\|prev` | Switch tab |
+| `close` | Close the tab and its connection |
+| `disconnect` | Close the connection, keep the tab |
 | `sites` | Site manager: list, add, edit, delete, connect |
 | `settings` | Settings page: screen size, code page, device name, column separators, SEU colouring, auto sign-on, trace file, keep-alive; saved as `defaults` in sites.json (also: `s` in the site list, Settings button on the login form) |
 | `import [settings.json]` | Import the tn5250-terminal VS Code extension's settings (see below) |

@@ -24,6 +24,13 @@ func (a *App) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		return ev
 	}
 	a.setNotice("")
+	// Alt+1..9 switches tabs (a rune chord, so it is not in the key table).
+	if ev.Key() == tcell.KeyRune && ev.Modifiers()&(tcell.ModAlt|tcell.ModCtrl) == tcell.ModAlt && ev.Rune() >= '1' && ev.Rune() <= '9' {
+		if msg := a.switchTab(string(ev.Rune())); msg != "" {
+			a.setNotice(msg)
+		}
+		return nil
+	}
 	action, text, ok := KeyAction(ev)
 	if !ok {
 		return nil
@@ -33,6 +40,14 @@ func (a *App) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		a.openCommandBar()
 	case action == ActQuit:
 		a.showQuit()
+	case action == ActNewTab:
+		a.setNotice(a.openNewTab("", false))
+	case action == ActCloseTab:
+		a.closeActiveTab()
+	case action == ActNextTab:
+		a.setNotice(a.switchTab("next"))
+	case action == ActPrevTab:
+		a.setNotice(a.switchTab("prev"))
 	case text != "":
 		a.typeText(text)
 	default:
@@ -135,7 +150,11 @@ func (a *App) showQuit() {
 	if a.topOverlay() == "quit" {
 		return
 	}
-	m := tview.NewModal().SetText("Quit tn5250-tui?").AddButtons([]string{"Quit", "Cancel"})
+	text := "Quit tn5250-tui?"
+	if n := a.connectedTabs(); n > 1 {
+		text = fmt.Sprintf("Quit tn5250-tui? %d sessions are connected.", n)
+	}
+	m := tview.NewModal().SetText(text).AddButtons([]string{"Quit", "Cancel"})
 	m.SetDoneFunc(func(i int, label string) {
 		if label == "Quit" {
 			a.Quit()

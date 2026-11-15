@@ -79,6 +79,27 @@ type overlay struct {
 	focus tview.Primitive
 }
 
+// conn is one tab: a connection (or the empty tab before and after one) and everything
+// the terminal knows about it. Every field is guarded by App.mu, and so is every engine
+// call. The App embeds the active tab, so a.engine, a.connected, ... are the active
+// tab's; the other tabs keep their engines fed in the background.
+type conn struct {
+	engine      Engine
+	sess        *session
+	connected   bool
+	connecting  bool
+	cur         sites.Site // current connection target (with overrides)
+	curSaved    string     // name of the saved site, "" for ad-hoc
+	autoPending bool
+	notice      string
+	noticeFlash bool // notice is a one-off message; the next key press clears it
+
+	pcAnswered    bool           // the STRPCCMD screen on show was already answered
+	pendingSignon *pendingSignon // a typed sign-on waiting for the host's answer
+	hintShown     bool           // the code page hint was shown on this connection
+	demoLabel     string         // the demo watermark of this tab's site ("" = none)
+}
+
 // App is the terminal application.
 type App struct {
 	opts   AppOptions
@@ -87,29 +108,19 @@ type App struct {
 	app    *tview.Application
 	pages  *tview.Pages
 	flex   *tview.Flex
+	tabbar *TabBar
 	screen *Screen
 	oia    *OIABar
 	bar    *tview.InputField
 
-	mu          sync.Mutex // guards the fields below and every engine call
-	engine      Engine
-	sess        *session
+	mu          sync.Mutex // guards the fields below, every tab and every engine call
+	*conn                  // the active tab
+	tabs        []*conn    // every tab, in bar order (at least one)
 	gen         uint64
-	connected   bool
-	connecting  bool
-	cur         sites.Site // current connection target (with overrides)
-	curSaved    string     // name of the saved site, "" for ad-hoc
-	autoPending bool
-	notice      string
-	noticeFlash bool // notice is a one-off message; the next key press clears it
 	sizeOv      string
 	cpOv        int
 	traceW      io.Writer
 	traceCloser io.Closer
-
-	pcAnswered    bool           // the STRPCCMD screen on show was already answered
-	pendingSignon *pendingSignon // a typed sign-on waiting for the host's answer
-	hintShown     bool           // the code page hint was shown on this connection
 
 	now func() time.Time // time.Now; tests replace it
 
@@ -128,7 +139,8 @@ func New(opts AppOptions) *App {
 	if opts.Sites == nil {
 		opts.Sites = &sites.File{}
 	}
-	a := &App{opts: opts, dialer: opts.Dialer, now: time.Now}
+	first := &conn{}
+	a := &App{opts: opts, dialer: opts.Dialer, now: time.Now, conn: first, tabs: []*conn{first}}
 	if a.dialer == nil {
 		a.dialer = NetDialer{}
 	}
@@ -144,6 +156,7 @@ func New(opts AppOptions) *App {
 	a.screen.Separators = opts.Sites.EffectiveDefaults().Separators
 	a.screen.Highlight = opts.Sites.EffectiveDefaults().SourceHighlight
 	a.applyDefaults(opts.Sites.EffectiveDefaults())
+	a.tabbar = NewTabBar(a.tabInfos)
 	a.oia = NewOIABar(a.oiaSource)
 	a.bar = tview.NewInputField().SetLabel(":").SetFieldWidth(0)
 	a.bar.SetBackgroundColor(oiaBg)
@@ -154,6 +167,7 @@ func New(opts AppOptions) *App {
 	a.bar.SetInputCapture(a.barKey)
 
 	a.flex = tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(a.tabbar, 0, 0, false). // one row once there is more than one tab
 		AddItem(a.screen, 0, 1, true).
 		AddItem(a.bar, 0, 0, false).
 		AddItem(a.oia, 1, 0, false)
@@ -181,7 +195,7 @@ func (a *App) Run() error {
 	a.startup()
 	err := a.app.Run()
 	a.stopped.Store(true)
-	a.Disconnect()
+	a.disconnectAll()
 	a.mu.Lock()
 	a.closeTraceLocked()
 	a.mu.Unlock()
@@ -234,7 +248,7 @@ func (a *App) resolveTarget(target string, tlsFlag bool) (sites.Site, string, er
 // Quit stops the application.
 func (a *App) Quit() {
 	a.stopped.Store(true)
-	a.Disconnect()
+	a.disconnectAll()
 	a.app.Stop()
 }
 
@@ -302,36 +316,39 @@ func (a *App) requestRedraw() {
 	})
 }
 
-// afterUpdate runs on the UI goroutine after the engine changed.
+// afterUpdate runs on the UI goroutine after an engine changed. Every tab is looked at:
+// a sign-on in a background tab goes on while another tab is in front.
 func (a *App) afterUpdate() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.checkSignonLocked() // before the auto sign-on: its own attempt is judged on a later update
-	a.pcCommandLocked()
-	a.autoSignonLocked()
+	for _, t := range a.tabs {
+		t.checkSignonLocked() // before the auto sign-on: its own attempt is judged on a later update
+		t.pcCommandLocked()
+		t.autoSignonLocked()
+	}
 }
 
-// flashLocked shows msg on the OIA line until the next key press. The caller holds a.mu.
-func (a *App) flashLocked(msg string) {
-	a.notice = msg
-	a.noticeFlash = true
+// flashLocked shows msg on the OIA line until the next key press. The caller holds App.mu.
+func (c *conn) flashLocked(msg string) {
+	c.notice = msg
+	c.noticeFlash = true
 }
 
-// clearFlashLocked removes a one-off notice (the user pressed a key). The caller holds a.mu.
-func (a *App) clearFlashLocked() {
-	if a.noticeFlash {
-		a.notice = ""
-		a.noticeFlash = false
+// clearFlashLocked removes a one-off notice (the user pressed a key). The caller holds App.mu.
+func (c *conn) clearFlashLocked() {
+	if c.noticeFlash {
+		c.notice = ""
+		c.noticeFlash = false
 	}
 }
 
 // pressLocked presses an engine key. Enter first notes what a sign-on attempt holds, so a
-// refusal can point at the code page. The caller holds a.mu and has checked a.engine.
-func (a *App) pressLocked(action string) {
+// refusal can point at the code page. The caller holds App.mu and has checked c.engine.
+func (c *conn) pressLocked(action string) {
 	if action == "enter" {
-		a.armSignonLocked()
+		c.armSignonLocked()
 	}
-	a.engine.Press(action)
+	c.engine.Press(action)
 }
 
 // ---- connections -----------------------------------------------------------
@@ -340,6 +357,7 @@ func (a *App) pressLocked(action string) {
 // dial returned are queued and replayed in order once the link is installed.
 type session struct {
 	app    *App
+	tab    *conn // the tab this connection belongs to
 	gen    uint64
 	cancel context.CancelFunc
 
@@ -391,16 +409,16 @@ func (s *session) onClosed(err error) {
 }
 
 func (s *session) setLink(l Link) bool {
-	a := s.app
+	a, t := s.app, s.tab
 	a.mu.Lock()
-	if a.sess != s {
+	if t.sess != s {
 		a.mu.Unlock()
 		return false
 	}
 	if !s.dead { // the host may have closed before we got here
-		a.connected = true
-		a.connecting = false
-		a.notice = ""
+		t.connected = true
+		t.connecting = false
+		t.notice = ""
 	}
 	a.mu.Unlock()
 	s.linkMu.Lock()
@@ -417,33 +435,35 @@ func (s *session) setLink(l Link) bool {
 	return true
 }
 
-// feed hands socket bytes to the engine (under the App mutex).
+// feed hands socket bytes to the session's engine (under the App mutex).
 func (a *App) feed(s *session, b []byte) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.sess != s || a.engine == nil {
+	t := s.tab
+	if t.sess != s || t.engine == nil {
 		return
 	}
-	a.engine.Feed(b)
+	t.engine.Feed(b)
 }
 
 // dropped is called when the socket ends (host closed it, or an error).
 func (a *App) dropped(s *session, err error) {
 	a.mu.Lock()
-	if a.sess != s {
+	t := s.tab
+	if t.sess != s {
 		a.mu.Unlock()
 		return
 	}
 	s.dead = true
-	a.connected = false
-	a.connecting = false
-	a.autoPending = false
+	t.connected = false
+	t.connecting = false
+	t.autoPending = false
 	// Closed by the host right after the connect and before any screen: the workstation name
 	// is most likely in use (by an ACS session, say). Try the next name.
 	early := s.deviceName != "" && s.screens.Load() == 0 &&
 		(s.connectedAt.IsZero() || a.now().Sub(s.connectedAt) < earlyDropWindow)
 	retry := early && s.attempt < maxDeviceRetries && nextDeviceName(s.template, s.attempt+1) != ""
-	cur, saved := a.cur, a.curSaved
+	cur, saved := t.cur, t.curSaved
 	msg := "Connection closed. Press Enter to reconnect, or :connect"
 	switch {
 	case early:
@@ -451,14 +471,14 @@ func (a *App) dropped(s *session, err error) {
 	case err != nil:
 		msg = "Connection lost: " + err.Error() + ". Press Enter to reconnect"
 	}
-	a.notice = msg
-	a.noticeFlash = false
+	t.notice = msg
+	t.noticeFlash = false
 	a.mu.Unlock()
 	s.linkMu.Lock()
 	s.link = nil
 	s.linkMu.Unlock()
 	if retry {
-		a.dial(cur, saved, s.attempt+1, s.deviceName)
+		a.dial(t, cur, saved, s.attempt+1, s.deviceName)
 		return
 	}
 	a.requestRedraw()
@@ -468,23 +488,29 @@ func (a *App) dropped(s *session, err error) {
 // counts as "workstation name in use".
 const earlyDropWindow = 8 * time.Second
 
-// connectTo drops any current connection and connects to site. saved is the
-// saved site's name ("" for an ad-hoc host).
+// connectTo connects to site: in the active tab when it holds no connection, else in a
+// new tab (the open sessions stay). saved is the saved site's name ("" for an ad-hoc host).
 func (a *App) connectTo(site sites.Site, saved string) {
-	a.dial(site, saved, 0, "")
+	a.dial(a.tabForConnect(), site, saved, 0, "")
 }
 
-// dial is connectTo for connection attempt number attempt. The site's device name is a
-// template (see nextDeviceName); attempt 0 is the user's own connect, later ones retry after
-// the host refused the name.
-func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
-	site = a.opts.Sites.Complete(site)
-	if attempt == 0 { // the user's own connect runs on the UI goroutine
-		a.screen.DemoLabel = ""
-		if site.Demo {
-			a.screen.DemoLabel = demoLabel(site)
-		}
+// tabForConnect is the tab a new connection goes to: the active one when it is idle, else
+// a new tab. It runs on the UI goroutine.
+func (a *App) tabForConnect() *conn {
+	a.mu.Lock()
+	idle := !a.connected && !a.connecting
+	a.mu.Unlock()
+	if idle {
+		return a.conn
 	}
+	return a.newTab()
+}
+
+// dial connects tab t to site, for connection attempt number attempt. The site's device
+// name is a template (see nextDeviceName); attempt 0 is the user's own connect (on the UI
+// goroutine), later ones retry after the host refused the name.
+func (a *App) dial(t *conn, site sites.Site, saved string, attempt int, refused string) {
+	site = a.opts.Sites.Complete(site)
 	a.mu.Lock()
 	if a.sizeOv != "" {
 		site.ScreenSize = a.sizeOv
@@ -493,10 +519,23 @@ func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
 		site.CodePage = a.cpOv
 	}
 	a.mu.Unlock()
-	a.Disconnect()
+	a.disconnectTab(t)
+	if attempt == 0 {
+		label := ""
+		if site.Demo {
+			label = demoLabel(site)
+		}
+		a.mu.Lock()
+		t.demoLabel = label
+		active := t == a.conn
+		a.mu.Unlock()
+		if active {
+			a.screen.DemoLabel = label
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &session{app: a, cancel: cancel, attempt: attempt}
+	s := &session{app: a, tab: t, cancel: cancel, attempt: attempt}
 	if tpl := expandDeviceVars(strings.TrimSpace(site.DeviceName)); tpl != "" {
 		s.template = tpl
 		s.deviceName = nextDeviceName(tpl, attempt)
@@ -519,18 +558,18 @@ func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
 	a.mu.Lock()
 	a.gen++
 	s.gen = a.gen
-	a.engine = eng
-	a.sess = s
-	a.cur = site
-	a.curSaved = saved
-	a.connected = false
-	a.connecting = true
-	a.autoPending = site.AutoSignon && site.User != "" && site.Password != ""
-	a.pcAnswered, a.pendingSignon, a.hintShown = false, nil, false
-	a.noticeFlash = false
-	a.notice = fmt.Sprintf("Connecting to %s:%d ...", site.Host, site.Port)
+	t.engine = eng
+	t.sess = s
+	t.cur = site
+	t.curSaved = saved
+	t.connected = false
+	t.connecting = true
+	t.autoPending = site.AutoSignon && site.User != "" && site.Password != ""
+	t.pcAnswered, t.pendingSignon, t.hintShown = false, nil, false
+	t.noticeFlash = false
+	t.notice = fmt.Sprintf("Connecting to %s:%d ...", site.Host, site.Port)
 	if refused != "" {
-		a.notice = fmt.Sprintf("Workstation %s refused by the host, trying %s ...", refused, s.deviceName)
+		t.notice = fmt.Sprintf("Workstation %s refused by the host, trying %s ...", refused, s.deviceName)
 	}
 	trace := a.traceW
 	a.mu.Unlock()
@@ -549,10 +588,10 @@ func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
 		})
 		if err != nil {
 			a.mu.Lock()
-			if a.sess == s {
-				a.connecting = false
-				a.autoPending = false
-				a.notice = "Connect failed: " + err.Error() + "  (Enter or :connect to retry)"
+			if t.sess == s {
+				t.connecting = false
+				t.autoPending = false
+				t.notice = "Connect failed: " + err.Error() + "  (Enter or :connect to retry)"
 			}
 			a.mu.Unlock()
 			a.requestRedraw()
@@ -567,16 +606,24 @@ func (a *App) dial(site sites.Site, saved string, attempt int, refused string) {
 	}()
 }
 
-// Disconnect closes the connection (if any) and resets the engine.
+// Disconnect closes the active tab's connection (if any) and resets its engine.
 func (a *App) Disconnect() {
 	a.mu.Lock()
-	s := a.sess
-	eng := a.engine
-	a.sess = nil
-	a.engine = nil
-	a.connected = false
-	a.connecting = false
-	a.autoPending = false
+	t := a.conn
+	a.mu.Unlock()
+	a.disconnectTab(t)
+}
+
+// disconnectTab closes tab t's connection (if any) and resets its engine; the tab stays.
+func (a *App) disconnectTab(t *conn) {
+	a.mu.Lock()
+	s := t.sess
+	eng := t.engine
+	t.sess = nil
+	t.engine = nil
+	t.connected = false
+	t.connecting = false
+	t.autoPending = false
 	a.mu.Unlock()
 	if s == nil {
 		return
@@ -592,7 +639,17 @@ func (a *App) Disconnect() {
 	}
 }
 
-// reconnect connects again to the current target.
+// disconnectAll closes every tab's connection (quit).
+func (a *App) disconnectAll() {
+	a.mu.Lock()
+	tabs := append([]*conn(nil), a.tabs...)
+	a.mu.Unlock()
+	for _, t := range tabs {
+		a.disconnectTab(t)
+	}
+}
+
+// reconnect connects again to the active tab's target.
 func (a *App) reconnect() {
 	a.mu.Lock()
 	cur, saved := a.cur, a.curSaved
@@ -615,23 +672,26 @@ func (a *App) traceOn(file string) error {
 	defer a.mu.Unlock()
 	a.closeTraceLocked()
 	a.traceW, a.traceCloser = f, f
-	if a.sess != nil {
-		if l := a.sess.getLink(); l != nil {
-			l.SetTrace(f)
-		}
-	}
+	a.setLinkTraceLocked(f)
 	return nil
 }
 
 func (a *App) traceOff() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.sess != nil {
-		if l := a.sess.getLink(); l != nil {
-			l.SetTrace(nil)
+	a.setLinkTraceLocked(nil)
+	a.closeTraceLocked()
+}
+
+// setLinkTraceLocked points every open connection's trace at w. The caller holds a.mu.
+func (a *App) setLinkTraceLocked(w io.Writer) {
+	for _, t := range a.tabs {
+		if t.sess != nil {
+			if l := t.sess.getLink(); l != nil {
+				l.SetTrace(w)
+			}
 		}
 	}
-	a.closeTraceLocked()
 }
 
 func (a *App) closeTraceLocked() {
@@ -673,34 +733,34 @@ func fillSignon(e Engine, snap Snapshot, user, password string) error {
 	return nil
 }
 
-// signonLocked is typedSignon through the App: Enter goes through pressLocked, so the code
-// page hint watches the attempt. The caller holds a.mu.
-func (a *App) signonLocked(snap Snapshot, user, password string) error {
-	if err := fillSignon(a.engine, snap, user, password); err != nil {
+// signonLocked is typedSignon through the tab: Enter goes through pressLocked, so the code
+// page hint watches the attempt. The caller holds App.mu.
+func (c *conn) signonLocked(snap Snapshot, user, password string) error {
+	if err := fillSignon(c.engine, snap, user, password); err != nil {
 		return err
 	}
-	a.pressLocked("enter")
+	c.pressLocked("enter")
 	return nil
 }
 
 // autoSignonLocked runs the typed sign-on once, on the first unlocked screen
-// with content after connecting. The caller holds a.mu.
-func (a *App) autoSignonLocked() {
-	if !a.autoPending || !a.connected || a.engine == nil {
+// with content after connecting. The caller holds App.mu.
+func (c *conn) autoSignonLocked() {
+	if !c.autoPending || !c.connected || c.engine == nil {
 		return
 	}
-	if o := a.engine.OIA(true); o.InputInhibited != "none" && o.InputInhibited != "" {
+	if o := c.engine.OIA(true); o.InputInhibited != "none" && o.InputInhibited != "" {
 		return
 	}
-	snap := a.engine.Snapshot()
+	snap := c.engine.Snapshot()
 	if strings.TrimSpace(snap.Text()) == "" {
 		return
 	}
-	a.autoPending = false // the first screen decides, once
-	_ = a.signonLocked(snap, a.cur.User, a.cur.Password)
+	c.autoPending = false // the first screen decides, once
+	_ = c.signonLocked(snap, c.cur.User, c.cur.Password)
 }
 
-// signon is the `signon` command.
+// signon is the `signon` command (active tab).
 func (a *App) signon() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -729,10 +789,10 @@ type pendingSignon struct {
 
 // armSignonLocked runs when Enter is pressed: if the screen is a sign-on screen and its
 // password field holds variant characters, remember them so a refusal can name them.
-// The caller holds a.mu.
-func (a *App) armSignonLocked() {
-	a.pendingSignon = nil
-	p, ok := a.engine.(SignonProber)
+// The caller holds App.mu.
+func (c *conn) armSignonLocked() {
+	c.pendingSignon = nil
+	p, ok := c.engine.(SignonProber)
 	if !ok {
 		return
 	}
@@ -740,34 +800,34 @@ func (a *App) armSignonLocked() {
 	if !probe.Screen || len(probe.VariantChars) == 0 {
 		return
 	}
-	a.pendingSignon = &pendingSignon{chars: probe.VariantChars}
+	c.pendingSignon = &pendingSignon{chars: probe.VariantChars}
 }
 
 // checkSignonLocked judges a pending sign-on attempt: when the host unlocked the keyboard
 // and shows a sign-on screen again, the attempt failed, and the notice names the variant
-// characters and the code page in use. One notice per connection. The caller holds a.mu.
-func (a *App) checkSignonLocked() {
-	ps := a.pendingSignon
-	if ps == nil || a.engine == nil {
+// characters and the code page in use. One notice per connection. The caller holds App.mu.
+func (c *conn) checkSignonLocked() {
+	ps := c.pendingSignon
+	if ps == nil || c.engine == nil {
 		return
 	}
-	if o := a.engine.OIA(true); o.InputInhibited != "none" && o.InputInhibited != "" {
+	if o := c.engine.OIA(true); o.InputInhibited != "none" && o.InputInhibited != "" {
 		if ps.screens++; ps.screens > signonAnswerScreens {
-			a.pendingSignon = nil
+			c.pendingSignon = nil
 		}
 		return
 	}
-	a.pendingSignon = nil
-	p, ok := a.engine.(SignonProber)
+	c.pendingSignon = nil
+	p, ok := c.engine.(SignonProber)
 	if !ok {
 		return
 	}
 	probe := p.SignonProbe()
-	if !probe.Screen || a.hintShown {
+	if !probe.Screen || c.hintShown {
 		return
 	}
-	a.hintShown = true
-	a.flashLocked(fmt.Sprintf("Sign-on failed; the password has characters that differ between code pages (%s). Code page in use: %d; if the user and password are right, set :cp to the host's CCSID and reconnect",
+	c.hintShown = true
+	c.flashLocked(fmt.Sprintf("Sign-on failed; the password has characters that differ between code pages (%s). Code page in use: %d; if the user and password are right, set :cp to the host's CCSID and reconnect",
 		strings.Join(ps.chars, " "), probe.CodePage))
 }
 
@@ -775,24 +835,24 @@ func (a *App) checkSignonLocked() {
 
 // pcCommandLocked answers a STRPCCMD (PC Organizer) screen with Enter at once so the host's
 // program resumes, and says on the OIA line that the command was not run: this terminal never
-// runs a command the host sends. The caller holds a.mu.
-func (a *App) pcCommandLocked() {
-	if a.engine == nil || !a.connected {
+// runs a command the host sends. The caller holds App.mu.
+func (c *conn) pcCommandLocked() {
+	if c.engine == nil || !c.connected {
 		return
 	}
-	src, ok := a.engine.(PcCommandSource)
+	src, ok := c.engine.(PcCommandSource)
 	if !ok {
 		return
 	}
 	cmd, found := src.PcCommand()
 	if !found {
-		a.pcAnswered = false
+		c.pcAnswered = false
 		return
 	}
-	if a.pcAnswered {
+	if c.pcAnswered {
 		return
 	}
-	a.pcAnswered = true
-	a.flashLocked("PC command not run here: " + cmd.Command)
-	a.engine.Press("enter")
+	c.pcAnswered = true
+	c.flashLocked("PC command not run here: " + cmd.Command)
+	c.engine.Press("enter")
 }

@@ -234,10 +234,14 @@ func TestStaleCloseFromOldConnectionIgnored(t *testing.T) {
 	r := newRig(t, nil)
 	r.connect(t, "pub400.com")
 	o1, l1 := r.d.last()
-	r.a.RunCommand("connect pub400.com")
-	waitFor(t, "second dial", func() bool { return r.d.count() == 2 && r.isConnected() })
+	r.a.RunCommand("disconnect") // (a second `connect` while connected opens a new tab instead)
 	if !l1.isClosed() {
 		t.Fatal("old link not closed")
+	}
+	r.a.RunCommand("connect pub400.com")
+	waitFor(t, "second dial", func() bool { return r.d.count() == 2 && r.isConnected() })
+	if r.a.TabCount() != 1 {
+		t.Fatalf("an idle tab is reused, got %d tabs", r.a.TabCount())
 	}
 	o1.OnClosed(nil) // late callback of the first connection
 	if !r.isConnected() {

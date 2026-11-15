@@ -124,8 +124,11 @@ func ParseTarget(s string) (host string, port int, err error) {
 // CommandHelp lists the commands for the help modal.
 func CommandHelp() [][2]string {
 	return [][2]string{
-		{"connect [site|host[:port]] [--tls]", "connect (no argument: reconnect, or the login form)"},
-		{"disconnect", "close the connection"},
+		{"connect [site|host[:port]] [--tls]", "connect in this tab when it is idle, else in a new tab (no argument: reconnect, or the login form)"},
+		{"new [site|host[:port]] [--tls]", "open a new tab (no argument: the site list)"},
+		{"tab <n>|next|prev", "switch tab (also Ctrl+PgUp/PgDn, Alt+1-9)"},
+		{"close", "close this tab and its connection (Ctrl+W)"},
+		{"disconnect", "close the connection, keep the tab"},
 		{"sites", "site manager: add, edit, delete, connect"},
 		{"settings", "defaults page: size, code page, device name, separators, SEU colours, sign-on, trace, keep-alive"},
 		{"import [settings.json]", "import the VS Code extension's sessions, defaults, colours, keys and watermark (passwords stay in VS Code)"},
@@ -165,6 +168,22 @@ func (a *App) execute(line string) string {
 		a.cur.Host = "" // an explicit disconnect forgets the reconnect target
 		a.mu.Unlock()
 		return "Disconnected"
+	case "new":
+		if len(c.Args) > 1 {
+			return "usage: new [site|host[:port]] [--tls]"
+		}
+		target := ""
+		if len(c.Args) == 1 {
+			target = c.Args[0]
+		}
+		return a.openNewTab(target, c.TLS)
+	case "tab":
+		if len(c.Args) != 1 {
+			return "usage: tab <n>|next|prev"
+		}
+		return a.switchTab(c.Args[0])
+	case "close":
+		return a.closeTab(a.ActiveTab())
 	case "sites":
 		a.showSites()
 		return ""

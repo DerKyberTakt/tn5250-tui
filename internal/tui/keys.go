@@ -11,6 +11,10 @@ import (
 const (
 	ActCommandBar = "app:command"
 	ActQuit       = "app:quit"
+	ActNewTab     = "app:newtab"
+	ActCloseTab   = "app:closetab"
+	ActNextTab    = "app:nexttab"
+	ActPrevTab    = "app:prevtab"
 )
 
 // Actions lists every engine action name (the engine contract). The command
@@ -87,6 +91,11 @@ var KeyTable = []Binding{
 	{tcell.KeyCtrlK, 0, ActCommandBar, "Command bar"},
 	{tcell.KeyCtrlQ, 0, ActQuit, "Quit"},
 	{tcell.KeyCtrlC, 0, ActQuit, "Quit"},
+	// Tabs (sessions). Alt+1..9 is handled in handleKey: it is a rune chord.
+	{tcell.KeyCtrlT, 0, ActNewTab, "New tab"},
+	{tcell.KeyCtrlW, 0, ActCloseTab, "Close tab"},
+	{tcell.KeyPgUp, tcell.ModCtrl, ActPrevTab, "Previous tab"},
+	{tcell.KeyPgDn, tcell.ModCtrl, ActNextTab, "Next tab"},
 }
 
 func init() {
@@ -174,6 +183,8 @@ func HelpKeys() [][2]string {
 		{"Ctrl+E", "Erase to end of field"},
 		{"Ctrl+Backspace", "Erase Input"},
 		{"Ctrl+K, or : outside a field", "command bar"},
+		{"Ctrl+T / Ctrl+W", "new tab (site list) / close tab"},
+		{"Ctrl+PgUp / Ctrl+PgDn, Alt+1-9", "previous / next tab, tab by number"},
 		{"Ctrl+Q, Ctrl+C", "quit (asks first)"},
 	}
 }
