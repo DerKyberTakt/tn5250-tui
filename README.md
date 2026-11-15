@@ -78,6 +78,24 @@ Each connection is a tab. A tab bar appears above the screen once there are two:
 
 **Split view.** `:split` (or Ctrl+\) shows the next tab beside this one, left and right of a divider; `:split 3` picks the tab for the other pane, and with one tab open `:split` opens a new one with the site list. The keyboard, the cursor and the OIA line belong to one pane; `:split` or Ctrl+\ again moves them to the other pane, and switching to the tab that is already in the other pane does the same. Tab switching otherwise changes the focused pane's tab. The other pane's tab is underlined in the tab bar. `:unsplit` goes back to one pane and keeps both tabs. Each pane gets half the width: two 132-column screens fit side by side from 266 columns, two 80-column ones from 162; below that the pane scrolls to follow the cursor.
 
+## SQL runner (`:sql`)
+
+`:sql` opens a tab with a script editor over a result grid for the active tab's site (`:sql <site>` for another one; the site needs a user and a password, which also sign on to the host servers). The tab talks to the database server and the remote command server of the host (port mapper 449, or the well-known ports 8471 and 8475; `--tls` / `--plain` override the site's TLS setting for them), nothing goes through the 5250 session.
+
+Type SQL, CL commands and Qshell lines in one script. Each statement runs as what it looks like: an SQL keyword is SQL; a CL verb such as `WRKACTJOB SBS(QINTER)` or `LIB/CMD` is CL; a path, a known shell command (`ls`, `cat`, `db2`, `python3`, `system`...), a `VAR=value` or a pipeline is Qshell; `CALL PGM(X)` / `CALL X PARM(...)` is CL, `CALL SCHEMA.PROC(...)` is SQL; everything else is SQL and the host says what it thinks. The status line under the grid names the kind and the reason ("CL (CL verb DSPLIBL)"), and an explicit `SQL:`, `CL:` or `QSH:` prefix always wins. SQL statements end with `;` or a blank line; a CL line continues with `+`, a shell line with `\`.
+
+| Key | In the SQL tab |
+| --- | --- |
+| F5 | Run the statement at the cursor |
+| F9 | Run the whole script, stopping at the first failure |
+| Tab / Esc | Keyboard to the result grid and back |
+| PgDn on the last row | Fetch the next 100 rows of a query |
+| Esc while running | Cancel the SQL statement |
+| Ctrl+L | Clear the grid |
+| F3, Ctrl+W | Close the tab and its host-server connections |
+
+A query shows its rows (NULL as `-`), an update its row count, a CL command its messages and whatever it printed (a display command's spooled file is read back through `SYSTOOLS.SPOOLED_FILE_DATA` and deleted from the server job), a Qshell line its output (sent to a stream file, read back with `QSYS2.IFS_READ` and removed). `--sys` gives `LIBRARY/FILE` naming instead of `SCHEMA.TABLE`. The tab bar names the tab `SQL <site>`; it takes part in tabs and the split view like any other.
+
 ## Local command line
 
 `:!dir` or `:!ls -l` runs a command on this machine through `cmd /c` or `sh -c` and streams its output into an eight-row pane under the 5250 screen (`:local` hides and shows it, `:local clear` empties it; one command at a time). For a real shell, `:sh` hands the console to `$SHELL` / `%COMSPEC%` (or `TN5250_TUI_SHELL`) and redraws the terminal when you type `exit`; every session stays connected meanwhile. Neither touches the host.
@@ -94,6 +112,7 @@ Open the command bar with `:` (when the cursor is not in an input field) or with
 | `close` | Close the tab and its connection |
 | `split [n]` | Show tab n beside this one (no n: the next tab, or a new one); when split, move the keyboard to the other pane |
 | `unsplit` | Back to one pane; the other tab stays open |
+| `sql [site\|host] [--sys] [--tls\|--plain]` | SQL runner tab for the site (default: this tab's): SQL, CL and Qshell lines, the kind told from the text |
 | `!<command>` | Run a command on this machine (not the host); its output streams into a pane under the screen |
 | `local [on\|off\|clear]` | Show, hide or empty that pane |
 | `sh` | Your shell in this console (`$SHELL`, `%COMSPEC%`, or `TN5250_TUI_SHELL`); `exit` returns to the terminal, the sessions stay connected |

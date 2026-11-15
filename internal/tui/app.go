@@ -98,6 +98,7 @@ type conn struct {
 	pendingSignon *pendingSignon // a typed sign-on waiting for the host's answer
 	hintShown     bool           // the code page hint was shown on this connection
 	demoLabel     string         // the demo watermark of this tab's site ("" = none)
+	tool          *sqlTool       // a tool tab (SQL runner) instead of a 5250 session
 }
 
 // App is the terminal application.
@@ -210,6 +211,7 @@ func (a *App) Run() error {
 	err := a.app.Run()
 	a.stopped.Store(true)
 	a.disconnectAll()
+	a.closeTools()
 	a.mu.Lock()
 	a.closeTraceLocked()
 	a.mu.Unlock()
@@ -263,6 +265,7 @@ func (a *App) resolveTarget(target string, tlsFlag bool) (sites.Site, string, er
 func (a *App) Quit() {
 	a.stopped.Store(true)
 	a.disconnectAll()
+	a.closeTools()
 	a.app.Stop()
 }
 
@@ -512,7 +515,7 @@ func (a *App) connectTo(site sites.Site, saved string) {
 // a new tab. It runs on the UI goroutine.
 func (a *App) tabForConnect() *conn {
 	a.mu.Lock()
-	idle := !a.connected && !a.connecting
+	idle := !a.connected && !a.connecting && a.tool == nil
 	a.mu.Unlock()
 	if idle {
 		return a.conn

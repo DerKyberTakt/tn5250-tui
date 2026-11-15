@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/rivo/tview"
 )
 
 // Split view: two tabs side by side. The focused tab (a.conn, the one the keyboard and the
@@ -57,6 +59,18 @@ func (a *App) focusedScreen() *Screen {
 	return a.screen
 }
 
+// focusedPrimitive is the widget the keyboard belongs to: the focused pane's screen, or
+// the tool inside a tool tab.
+func (a *App) focusedPrimitive() tview.Primitive {
+	a.mu.Lock()
+	tool := a.tool
+	a.mu.Unlock()
+	if tool != nil {
+		return tool.focus()
+	}
+	return a.focusedScreen()
+}
+
 // eachScreen applies f to both pane widgets (settings that are not per tab).
 func (a *App) eachScreen(f func(*Screen)) {
 	f(a.screen)
@@ -69,9 +83,13 @@ func (a *App) syncScreens() {
 	a.mu.Lock()
 	split := a.other != nil
 	var labels [2]string
+	widgets := [2]tview.Primitive{a.screen, a.screen2}
 	for k := 0; k < 2; k++ {
 		if t := a.paneTabLocked(k); t != nil {
 			labels[k] = t.demoLabel
+			if t.tool != nil {
+				widgets[k] = t.tool.root
+			}
 		}
 	}
 	a.mu.Unlock()
@@ -80,17 +98,15 @@ func (a *App) syncScreens() {
 		s.hlSeq = 0 // another engine's snapshot may carry the same sequence number
 		s.scrollX, s.scrollY = 0, 0
 	}
-	if split != a.splitShown {
-		a.panes.Clear()
-		a.panes.AddItem(a.screen, 0, 1, true)
-		if split {
-			a.panes.AddItem(a.divider, 1, 0, false)
-			a.panes.AddItem(a.screen2, 0, 1, false)
-		}
-		a.splitShown = split
+	a.panes.Clear()
+	a.panes.AddItem(widgets[0], 0, 1, true)
+	if split {
+		a.panes.AddItem(a.divider, 1, 0, false)
+		a.panes.AddItem(widgets[1], 0, 1, false)
 	}
+	a.splitShown = split
 	if len(a.overlays) == 0 && !a.barOpen {
-		a.app.SetFocus(a.focusedScreen())
+		a.app.SetFocus(a.focusedPrimitive())
 	}
 }
 

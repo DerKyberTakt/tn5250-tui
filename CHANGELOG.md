@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.1.0 - unreleased
+- SQL runner: `:sql [site]` opens a tab with a script editor and a result grid over the host's database and remote command servers (ported from the desktop app's Go host-server client). SQL, CL commands and Qshell lines mix in one script and each runs as what it looks like (`runscript.Classify`; `SQL:`/`CL:`/`QSH:` prefixes override); F5 runs the statement at the cursor, F9 the script, PgDn fetches the next 100 rows, Esc cancels; CL spooled output and Qshell output come back as rows.
 - Local command line: `:!<command>` runs a command on this machine and streams its output into a pane under the screen (`:local` show/hide/clear); `:sh` suspends the terminal into your shell and comes back on `exit`, sessions stay connected.
 - Split view: `:split [n]` / Ctrl+\ shows a second tab beside the active one (divider, each pane half the width, the other pane's tab underlined in the bar); `:split` again or Ctrl+\ moves the keyboard to the other pane, `:unsplit` goes back to one pane.
 - Passwords leave the sites file: OS secret store (Credential Manager, Keychain, Secret Service) with the marker `keyring:`, or AES-256-GCM under a 0600 key file where there is no store (`enc:`); clear-text entries are moved on the next load; `TN5250_TUI_SECRETS=keyring|file|plain`. The site form masks the password unless "Show password" is ticked.

@@ -24,6 +24,13 @@ func (a *App) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		return ev
 	}
 	a.setNotice("")
+	// A tool tab (the SQL runner) takes every key but the global ones.
+	a.mu.Lock()
+	tool := a.tool
+	a.mu.Unlock()
+	if tool != nil && !globalKey(ev) {
+		return ev
+	}
 	// Alt+1..9 switches tabs (a rune chord, so it is not in the key table).
 	if ev.Key() == tcell.KeyRune && ev.Modifiers()&(tcell.ModAlt|tcell.ModCtrl) == tcell.ModAlt && ev.Rune() >= '1' && ev.Rune() <= '9' {
 		if msg := a.switchTab(string(ev.Rune())); msg != "" {
@@ -137,8 +144,25 @@ func (a *App) closeOverlay() {
 	if n := len(a.overlays); n > 0 {
 		a.app.SetFocus(a.overlays[n-1].focus)
 	} else {
-		a.app.SetFocus(a.focusedScreen())
+		a.app.SetFocus(a.focusedPrimitive())
 	}
+}
+
+// globalKey reports whether a key belongs to the App rather than the tab in front:
+// the command bar, quit, and the tab and split keys.
+func globalKey(ev *tcell.EventKey) bool {
+	if ev.Key() == tcell.KeyRune && ev.Modifiers()&(tcell.ModAlt|tcell.ModCtrl) == tcell.ModAlt && ev.Rune() >= '1' && ev.Rune() <= '9' {
+		return true
+	}
+	action, _, ok := KeyAction(ev)
+	if !ok {
+		return false
+	}
+	switch action {
+	case ActCommandBar, ActQuit, ActNewTab, ActCloseTab, ActNextTab, ActPrevTab, ActSplit:
+		return true
+	}
+	return false
 }
 
 // replaceOverlay closes the overlay called name if it is on top.

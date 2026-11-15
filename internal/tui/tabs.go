@@ -109,6 +109,9 @@ func tabLabel(i int, t TabInfo) string {
 
 // tabTitle names a tab: the saved site, else the host, else "new".
 func tabTitle(t *conn) string {
+	if t.tool != nil {
+		return "SQL " + t.tool.name
+	}
 	switch {
 	case t.curSaved != "":
 		return t.curSaved
@@ -124,7 +127,7 @@ func (a *App) tabInfos() []TabInfo {
 	defer a.mu.Unlock()
 	out := make([]TabInfo, len(a.tabs))
 	for i, t := range a.tabs {
-		out[i] = TabInfo{Title: tabTitle(t), Active: t == a.conn, Split: t == a.other, Connected: t.connected, Connecting: t.connecting}
+		out[i] = TabInfo{Title: tabTitle(t), Active: t == a.conn, Split: t == a.other, Connected: t.connected || t.tool != nil, Connecting: t.connecting}
 	}
 	return out
 }
@@ -197,6 +200,7 @@ func (a *App) closeTab(i int) string {
 	last := len(a.tabs) == 1
 	a.mu.Unlock()
 	a.disconnectTab(t)
+	t.closeTool()
 	if last {
 		a.mu.Lock()
 		*t = conn{}

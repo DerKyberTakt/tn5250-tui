@@ -130,6 +130,7 @@ func CommandHelp() [][2]string {
 		{"close", "close this tab and its connection (Ctrl+W)"},
 		{"split [n]", "show tab n beside this one (no n: the next tab, or a new one); when split, :split and Ctrl+\\ move the keyboard to the other pane"},
 		{"unsplit", "back to one pane (the other tab stays open)"},
+		{"sql [site|host] [--sys] [--tls|--plain]", "SQL runner in a new tab for the site (default: this tab's): SQL, CL and Qshell lines, kind told from the text"},
 		{"!<command>", "run a command on this machine; its output shows in a pane under the screen"},
 		{"local [on|off|clear]", "show, hide or empty that pane"},
 		{"sh", "your shell in this console; exit returns to the terminal, sessions stay connected"},
@@ -212,6 +213,8 @@ func (a *App) execute(line string) string {
 		return a.split("")
 	case "unsplit":
 		return a.unsplit()
+	case "sql":
+		return a.openSQL(c.Args)
 	case "sites":
 		a.showSites()
 		return ""
@@ -378,7 +381,7 @@ func (a *App) closeCommandBar() {
 	}
 	a.barOpen = false
 	a.flex.ResizeItem(a.bar, 0, 0)
-	a.app.SetFocus(a.focusedScreen())
+	a.app.SetFocus(a.focusedPrimitive())
 }
 
 func (a *App) barDone(key tcell.Key) {
