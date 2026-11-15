@@ -113,6 +113,41 @@ func TestFormCtrlSSaves(t *testing.T) {
 	}
 }
 
+func TestFormScrollbarFollowsTheFocusedField(t *testing.T) {
+	f := newSiteForm(sites.Site{Name: "pub", Host: "PUB400.COM"}, func(sites.Site) {}, func() {}, func(string) {})
+	f.SetBorder(true)
+	app, sim := formApp(t, f, 60, 24)
+	app.ForceDraw()               // the first frame places the items, the second knows the rows
+	_, sw, _ := sim.GetContents() // the application resets the simulation screen to its own size
+	col := sw - 2
+	bar := func() (thumbTop, thumbRows int) {
+		thumbTop = -1
+		for y := 1; y <= 22; y++ {
+			r, _, _ := cellAt(sim, col, y)
+			if r == '█' {
+				if thumbTop < 0 {
+					thumbTop = y
+				}
+				thumbRows++
+			} else if r != '│' {
+				t.Fatalf("row %d: %q in the form's bar column", y, r)
+			}
+		}
+		return
+	}
+	top, rows := bar()
+	if top != 1 || rows < 1 {
+		t.Fatalf("thumb at %d (%d rows) with the first field focused", top, rows)
+	}
+	for i := 0; i < f.GetFormItemCount()+f.GetButtonCount()-1; i++ { // to the last button (one more would wrap)
+		sendForm(app, f, tcell.KeyDown)
+	}
+	app.ForceDraw()
+	if top2, rows2 := bar(); top2+rows2 != 23 || top2 <= top {
+		t.Fatalf("thumb at %d (%d rows) at the end of the form", top2, rows2)
+	}
+}
+
 func TestScrollbarOnlyWhenTheListOverflows(t *testing.T) {
 	l := tview.NewList().ShowSecondaryText(false)
 	l.SetBorder(true)

@@ -19,8 +19,10 @@ var (
 	litFieldColor = tcell.ColorWhite
 )
 
-// prepForm installs the key conventions on f; onSave may be nil (no Save key).
+// prepForm installs the key conventions on f (which draws a border) and its scroll
+// bar; onSave may be nil (no Save key).
 func prepForm(f *tview.Form, onSave func()) {
+	scrollbar(f.Box, true, func(int) (int, int) { return formRows(f) })
 	f.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 		switch ev.Key() {
 		case tcell.KeyCtrlS:
@@ -78,13 +80,39 @@ func litFocusedField(screen tcell.Screen, f *tview.Form) {
 }
 
 // afterDraw runs after every frame: the form on top of the overlays gets its focused
-// field lit.
+// field lit and its scroll bar drawn from where the items ended up (the form moves
+// them after its box, and so the bar, is drawn).
 func (a *App) afterDraw(screen tcell.Screen) {
 	if n := len(a.overlays); n > 0 {
 		if f, ok := a.overlays[n-1].focus.(*tview.Form); ok {
 			litFocusedField(screen, f)
+			x, y, w, h := f.GetRect()
+			off, total := formRows(f)
+			drawBar(screen, f.Box, x+1, y+1, w-2, h-2, off, total)
 		}
 	}
+}
+
+// formRows is the pos function of a form's scroll bar: how far the items are scrolled
+// and how many rows they take, read from where the last draw put them (zero before
+// the first draw, so no bar).
+func formRows(f *tview.Form) (offset, total int) {
+	n, nb := f.GetFormItemCount(), f.GetButtonCount()
+	if n == 0 {
+		return 0, 0
+	}
+	_, y0, _, _ := f.GetFormItem(0).GetRect()
+	_, fy, _, _ := f.GetRect()
+	innerY := fy + 1 // inside the border (GetInnerRect is not settled while the box is being drawn)
+	var last tview.Primitive = f.GetFormItem(n - 1)
+	if nb > 0 {
+		last = f.GetButton(nb - 1)
+	}
+	_, ly, _, lh := last.GetRect()
+	if ly+lh <= y0 {
+		return 0, 0
+	}
+	return innerY - y0, ly + lh - y0
 }
 
 // scrollbar draws a vertical scroll bar in the last column of b when its content is
@@ -97,30 +125,36 @@ func scrollbar(b *tview.Box, border bool, pos func(h int) (offset, total int)) {
 			x, y, w, h = x+1, y+1, w-2, h-2
 		}
 		offset, total := pos(h)
-		if w < 2 || h < 1 || total <= h {
-			return x, y, w, h
-		}
-		thumb := h * h / total
-		if thumb < 1 {
-			thumb = 1
-		}
-		top := 0
-		if total > h {
-			top = offset * (h - thumb) / (total - h)
-		}
-		if top > h-thumb {
-			top = h - thumb
-		}
-		cx := x + w - 1
-		for i := 0; i < h; i++ {
-			r, st := '│', tcell.StyleDefault.Foreground(tcell.ColorGray).Background(b.GetBackgroundColor())
-			if i >= top && i < top+thumb {
-				r, st = '█', st.Foreground(tcell.ColorSilver)
-			}
-			screen.SetContent(cx, y+i, r, nil, st)
-		}
-		return x, y, w - 1, h
+		return drawBar(screen, b, x, y, w, h, offset, total)
 	})
+}
+
+// drawBar draws the bar in the last column of the inner rect x, y, w, h when total
+// rows overflow h, and returns the rect left for the content.
+func drawBar(screen tcell.Screen, b *tview.Box, x, y, w, h, offset, total int) (int, int, int, int) {
+	if w < 2 || h < 1 || total <= h {
+		return x, y, w, h
+	}
+	thumb := h * h / total
+	if thumb < 1 {
+		thumb = 1
+	}
+	top := 0
+	if offset > 0 {
+		top = offset * (h - thumb) / (total - h)
+	}
+	if top > h-thumb {
+		top = h - thumb
+	}
+	cx := x + w - 1
+	for i := 0; i < h; i++ {
+		r, st := '│', tcell.StyleDefault.Foreground(tcell.ColorGray).Background(b.GetBackgroundColor())
+		if i >= top && i < top+thumb {
+			r, st = '█', st.Foreground(tcell.ColorSilver)
+		}
+		screen.SetContent(cx, y+i, r, nil, st)
+	}
+	return x, y, w - 1, h
 }
 
 // listRows is the pos function of a List's scrollbar: the rows the list is about to
