@@ -15,6 +15,7 @@ const (
 	ActCloseTab   = "app:closetab"
 	ActNextTab    = "app:nexttab"
 	ActPrevTab    = "app:prevtab"
+	ActSplit      = "app:split"
 )
 
 // Actions lists every engine action name (the engine contract). The command
@@ -96,6 +97,7 @@ var KeyTable = []Binding{
 	{tcell.KeyCtrlW, 0, ActCloseTab, "Close tab"},
 	{tcell.KeyPgUp, tcell.ModCtrl, ActPrevTab, "Previous tab"},
 	{tcell.KeyPgDn, tcell.ModCtrl, ActNextTab, "Next tab"},
+	{tcell.KeyCtrlBackslash, 0, ActSplit, "Split view / other pane"},
 }
 
 func init() {
@@ -185,6 +187,7 @@ func HelpKeys() [][2]string {
 		{"Ctrl+K, or : outside a field", "command bar"},
 		{"Ctrl+T / Ctrl+W", "new tab (site list) / close tab"},
 		{"Ctrl+PgUp / Ctrl+PgDn, Alt+1-9", "previous / next tab, tab by number"},
+		{"Ctrl+\\", "split view: open the next tab beside this one; when split, keyboard to the other pane"},
 		{"Ctrl+Q, Ctrl+C", "quit (asks first)"},
 	}
 }

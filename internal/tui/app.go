@@ -105,17 +105,22 @@ type App struct {
 	opts   AppOptions
 	dialer Dialer
 
-	app    *tview.Application
-	pages  *tview.Pages
-	flex   *tview.Flex
-	tabbar *TabBar
-	screen *Screen
-	oia    *OIABar
-	bar    *tview.InputField
+	app     *tview.Application
+	pages   *tview.Pages
+	flex    *tview.Flex
+	tabbar  *TabBar
+	panes   *tview.Flex // the screen, or two screens with a divider (split view)
+	screen  *Screen     // left pane
+	screen2 *Screen     // right pane (split view)
+	divider *tview.Box
+	oia     *OIABar
+	bar     *tview.InputField
 
 	mu          sync.Mutex // guards the fields below, every tab and every engine call
 	*conn                  // the active tab
 	tabs        []*conn    // every tab, in bar order (at least one)
+	other       *conn      // split view: the tab in the pane without the keyboard (nil = not split)
+	focusPane   int        // split view: the pane (0 left, 1 right) the active tab is drawn in
 	gen         uint64
 	sizeOv      string
 	cpOv        int
@@ -124,10 +129,11 @@ type App struct {
 
 	now func() time.Time // time.Now; tests replace it
 
-	overlays []overlay
-	barOpen  bool
-	history  []string
-	histPos  int
+	overlays   []overlay
+	barOpen    bool
+	splitShown bool // the second pane is in the layout
+	history    []string
+	histPos    int
 
 	drawPending atomic.Bool
 	stopped     atomic.Bool
@@ -152,9 +158,14 @@ func New(opts AppOptions) *App {
 		a.app.QueueUpdateDraw(f)
 	}
 
-	a.screen = NewScreen(a.screenSource)
-	a.screen.Separators = opts.Sites.EffectiveDefaults().Separators
-	a.screen.Highlight = opts.Sites.EffectiveDefaults().SourceHighlight
+	a.screen = NewScreen(a.paneSource(0))
+	a.screen2 = NewScreen(a.paneSource(1))
+	a.divider = tview.NewBox().SetBackgroundColor(oiaBg)
+	a.eachScreen(func(s *Screen) {
+		s.Separators = opts.Sites.EffectiveDefaults().Separators
+		s.Highlight = opts.Sites.EffectiveDefaults().SourceHighlight
+	})
+	a.panes = tview.NewFlex().SetDirection(tview.FlexColumn).AddItem(a.screen, 0, 1, true)
 	a.applyDefaults(opts.Sites.EffectiveDefaults())
 	a.tabbar = NewTabBar(a.tabInfos)
 	a.oia = NewOIABar(a.oiaSource)
@@ -168,7 +179,7 @@ func New(opts AppOptions) *App {
 
 	a.flex = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.tabbar, 0, 0, false). // one row once there is more than one tab
-		AddItem(a.screen, 0, 1, true).
+		AddItem(a.panes, 0, 1, true).
 		AddItem(a.bar, 0, 0, false).
 		AddItem(a.oia, 1, 0, false)
 	a.pages = tview.NewPages().AddPage("main", a.flex, true, true)
@@ -530,7 +541,7 @@ func (a *App) dial(t *conn, site sites.Site, saved string, attempt int, refused 
 		active := t == a.conn
 		a.mu.Unlock()
 		if active {
-			a.screen.DemoLabel = label
+			a.syncScreens()
 		}
 	}
 

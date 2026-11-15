@@ -75,6 +75,8 @@ Field Exit, Field+ and Field- have no reliable key in a terminal; use `:key fiel
 
 Each connection is a tab. A tab bar appears above the screen once there are two: ` 1 PUB400  2 agent `, the active one in reverse video, a dropped one dimmed, a connecting one with `...`. Open another session from the site list (`:sites`, or Ctrl+T for a fresh tab with the list), with `:connect <site>` while this tab is connected, or with `:new <site>`. Switch with Ctrl+PgUp / Ctrl+PgDn or Alt+1 - Alt+9 (`:tab 2`, `:tab next`); Ctrl+W closes the tab (it asks when the tab is connected). Background tabs keep their sessions alive: a sign-on in progress finishes, and a dropped one says so when you come back.
 
+**Split view.** `:split` (or Ctrl+\) shows the next tab beside this one, left and right of a divider; `:split 3` picks the tab for the other pane, and with one tab open `:split` opens a new one with the site list. The keyboard, the cursor and the OIA line belong to one pane; `:split` or Ctrl+\ again moves them to the other pane, and switching to the tab that is already in the other pane does the same. Tab switching otherwise changes the focused pane's tab. The other pane's tab is underlined in the tab bar. `:unsplit` goes back to one pane and keeps both tabs. Each pane gets half the width: two 132-column screens fit side by side from 266 columns, two 80-column ones from 162; below that the pane scrolls to follow the cursor.
+
 ## Commands
 
 Open the command bar with `:` (when the cursor is not in an input field) or with Ctrl+K anywhere.
@@ -85,6 +87,8 @@ Open the command bar with `:` (when the cursor is not in an input field) or with
 | `new [site\|host[:port]] [--tls]` | Open a new tab (no argument: the site list) |
 | `tab <n>\|next\|prev` | Switch tab |
 | `close` | Close the tab and its connection |
+| `split [n]` | Show tab n beside this one (no n: the next tab, or a new one); when split, move the keyboard to the other pane |
+| `unsplit` | Back to one pane; the other tab stays open |
 | `disconnect` | Close the connection, keep the tab |
 | `sites` | Site manager: list, add, edit, delete, connect |
 | `settings` | Settings page: screen size, code page, device name, column separators, SEU colouring, auto sign-on, trace file, keep-alive; saved as `defaults` in sites.json (also: `s` in the site list, Settings button on the login form) |

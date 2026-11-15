@@ -218,9 +218,9 @@ func ParseKeyName(name string) (keys []KeyRef, ok bool) {
 func (a *App) applyDefaults(d sites.Defaults) {
 	ApplyColors(d.Colors)
 	ApplyKeyOverrides(d.Keys)
-	a.screen.Watermark, a.screen.WatermarkPos = "", ""
+	a.eachScreen(func(s *Screen) { s.Watermark, s.WatermarkPos = "", "" })
 	if d.Watermark != nil {
-		a.screen.Watermark, a.screen.WatermarkPos = d.Watermark.Text, d.Watermark.Position
+		a.eachScreen(func(s *Screen) { s.Watermark, s.WatermarkPos = d.Watermark.Text, d.Watermark.Position })
 	}
 }
 

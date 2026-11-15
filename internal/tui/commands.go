@@ -128,6 +128,8 @@ func CommandHelp() [][2]string {
 		{"new [site|host[:port]] [--tls]", "open a new tab (no argument: the site list)"},
 		{"tab <n>|next|prev", "switch tab (also Ctrl+PgUp/PgDn, Alt+1-9)"},
 		{"close", "close this tab and its connection (Ctrl+W)"},
+		{"split [n]", "show tab n beside this one (no n: the next tab, or a new one); when split, :split and Ctrl+\\ move the keyboard to the other pane"},
+		{"unsplit", "back to one pane (the other tab stays open)"},
 		{"disconnect", "close the connection, keep the tab"},
 		{"sites", "site manager: add, edit, delete, connect"},
 		{"settings", "defaults page: size, code page, device name, separators, SEU colours, sign-on, trace, keep-alive"},
@@ -184,6 +186,16 @@ func (a *App) execute(line string) string {
 		return a.switchTab(c.Args[0])
 	case "close":
 		return a.closeTab(a.ActiveTab())
+	case "split":
+		if len(c.Args) > 1 {
+			return "usage: split [n]"
+		}
+		if len(c.Args) == 1 {
+			return a.split(c.Args[0])
+		}
+		return a.split("")
+	case "unsplit":
+		return a.unsplit()
 	case "sites":
 		a.showSites()
 		return ""
@@ -350,7 +362,7 @@ func (a *App) closeCommandBar() {
 	}
 	a.barOpen = false
 	a.flex.ResizeItem(a.bar, 0, 0)
-	a.app.SetFocus(a.screen)
+	a.app.SetFocus(a.focusedScreen())
 }
 
 func (a *App) barDone(key tcell.Key) {

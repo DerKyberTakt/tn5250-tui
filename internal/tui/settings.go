@@ -148,7 +148,7 @@ func (a *App) importVSCode(path string) string {
 		return "save: " + err.Error()
 	}
 	d := a.opts.Sites.EffectiveDefaults()
-	a.screen.Separators = d.Separators
+	a.eachScreen(func(s *Screen) { s.Separators = d.Separators })
 	a.applyDefaults(d)
 	a.mu.Lock()
 	a.sizeOv, a.cpOv = "", 0
@@ -165,8 +165,8 @@ func (a *App) saveDefaults(d sites.Defaults) error {
 		a.opts.Sites.Defaults = old
 		return err
 	}
-	a.screen.Separators = d.Separators
-	a.screen.Highlight = d.SourceHighlight
+	a.eachScreen(func(s *Screen) { s.Separators = d.Separators })
+	a.eachScreen(func(s *Screen) { s.Highlight = d.SourceHighlight })
 	a.applyDefaults(d)
 	a.mu.Lock()
 	a.sizeOv, a.cpOv = "", 0

@@ -48,6 +48,8 @@ func (a *App) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		a.setNotice(a.switchTab("next"))
 	case action == ActPrevTab:
 		a.setNotice(a.switchTab("prev"))
+	case action == ActSplit:
+		a.setNotice(a.split(""))
 	case text != "":
 		a.typeText(text)
 	default:
@@ -135,7 +137,7 @@ func (a *App) closeOverlay() {
 	if n := len(a.overlays); n > 0 {
 		a.app.SetFocus(a.overlays[n-1].focus)
 	} else {
-		a.app.SetFocus(a.screen)
+		a.app.SetFocus(a.focusedScreen())
 	}
 }
 

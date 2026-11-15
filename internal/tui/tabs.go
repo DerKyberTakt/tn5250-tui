@@ -16,6 +16,7 @@ import (
 type TabInfo struct {
 	Title      string
 	Active     bool
+	Split      bool // shown in the other pane of a split view
 	Connected  bool
 	Connecting bool
 }
@@ -77,6 +78,8 @@ func (b *TabBar) Draw(scr tcell.Screen) {
 		switch {
 		case tabs[i].Active:
 			st = tcell.StyleDefault.Background(oiaFg).Foreground(oiaBg).Bold(true)
+		case tabs[i].Split:
+			st = bg.Underline(true)
 		case !tabs[i].Connected && !tabs[i].Connecting:
 			st = bg.Foreground(tabIdleFg)
 		}
@@ -121,7 +124,7 @@ func (a *App) tabInfos() []TabInfo {
 	defer a.mu.Unlock()
 	out := make([]TabInfo, len(a.tabs))
 	for i, t := range a.tabs {
-		out[i] = TabInfo{Title: tabTitle(t), Active: t == a.conn, Connected: t.connected, Connecting: t.connecting}
+		out[i] = TabInfo{Title: tabTitle(t), Active: t == a.conn, Split: t == a.other, Connected: t.connected, Connecting: t.connecting}
 	}
 	return out
 }
@@ -151,19 +154,23 @@ func (a *App) ActiveTab() int {
 }
 
 // activate makes tab i the active one: the screen and the OIA line show it from now on.
-// It runs on the UI goroutine.
+// In a split view the tab replaces the one in the focused pane, unless it is the tab of the
+// other pane, in which case the keyboard moves there. It runs on the UI goroutine.
 func (a *App) activate(i int) {
 	a.mu.Lock()
 	if i < 0 || i >= len(a.tabs) {
 		a.mu.Unlock()
 		return
 	}
-	a.conn = a.tabs[i]
-	label := a.conn.demoLabel
+	t := a.tabs[i]
+	if t == a.other {
+		a.conn, a.other = a.other, a.conn
+		a.focusPane ^= 1
+	} else {
+		a.conn = t
+	}
 	a.mu.Unlock()
-	a.screen.DemoLabel = label
-	a.screen.hlSeq = 0 // another engine's snapshot may carry the same sequence number
-	a.screen.scrollX, a.screen.scrollY = 0, 0
+	a.syncScreens()
 }
 
 // newTab opens an empty tab, makes it active and returns it (UI goroutine).
@@ -194,7 +201,7 @@ func (a *App) closeTab(i int) string {
 		a.mu.Lock()
 		*t = conn{}
 		a.mu.Unlock()
-		a.screen.DemoLabel = ""
+		a.syncScreens()
 		return "Disconnected"
 	}
 	a.mu.Lock()
@@ -204,9 +211,18 @@ func (a *App) closeTab(i int) string {
 	if j >= len(a.tabs) {
 		j = len(a.tabs) - 1
 	}
+	if t == a.other { // the other pane's tab went: back to one pane
+		a.other, a.focusPane = nil, 0
+	}
+	takeOther := wasActive && a.other != nil && (len(a.tabs) == 1 || a.tabs[j] == a.other)
+	if takeOther { // the neighbour is the other pane's tab: it becomes the single tab in front
+		a.conn, a.other, a.focusPane = a.other, nil, 0
+	}
 	a.mu.Unlock()
-	if wasActive {
+	if wasActive && !takeOther {
 		a.activate(j)
+	} else {
+		a.syncScreens()
 	}
 	a.layoutTabs()
 	return ""
