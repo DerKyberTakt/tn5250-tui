@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.1.0 - unreleased
+- Local command line: `:!<command>` runs a command on this machine and streams its output into a pane under the screen (`:local` show/hide/clear); `:sh` suspends the terminal into your shell and comes back on `exit`, sessions stay connected.
 - Split view: `:split [n]` / Ctrl+\ shows a second tab beside the active one (divider, each pane half the width, the other pane's tab underlined in the bar); `:split` again or Ctrl+\ moves the keyboard to the other pane, `:unsplit` goes back to one pane.
 - Passwords leave the sites file: OS secret store (Credential Manager, Keychain, Secret Service) with the marker `keyring:`, or AES-256-GCM under a 0600 key file where there is no store (`enc:`); clear-text entries are moved on the next load; `TN5250_TUI_SECRETS=keyring|file|plain`. The site form masks the password unless "Show password" is ticked.
 - Several sessions at once, as tabs: a tab bar above the screen once there are two (active in reverse video, dropped dimmed, connecting with `...`); `:connect` on a connected tab opens a new one, `:new`, `:tab <n>|next|prev`, `:close`; Ctrl+T, Ctrl+W (asks when connected), Ctrl+PgUp/PgDn, Alt+1-9. Background tabs keep their sessions fed and finish their sign-on.

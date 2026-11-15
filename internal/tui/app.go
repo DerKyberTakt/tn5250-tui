@@ -113,6 +113,7 @@ type App struct {
 	screen  *Screen     // left pane
 	screen2 *Screen     // right pane (split view)
 	divider *tview.Box
+	local   *localPane // `:!` output under the screen
 	oia     *OIABar
 	bar     *tview.InputField
 
@@ -166,6 +167,7 @@ func New(opts AppOptions) *App {
 		s.Highlight = opts.Sites.EffectiveDefaults().SourceHighlight
 	})
 	a.panes = tview.NewFlex().SetDirection(tview.FlexColumn).AddItem(a.screen, 0, 1, true)
+	a.local = newLocalPane()
 	a.applyDefaults(opts.Sites.EffectiveDefaults())
 	a.tabbar = NewTabBar(a.tabInfos)
 	a.oia = NewOIABar(a.oiaSource)
@@ -180,6 +182,7 @@ func New(opts AppOptions) *App {
 	a.flex = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.tabbar, 0, 0, false). // one row once there is more than one tab
 		AddItem(a.panes, 0, 1, true).
+		AddItem(a.local.view, 0, 0, false). // `:!` output, 8 rows when shown
 		AddItem(a.bar, 0, 0, false).
 		AddItem(a.oia, 1, 0, false)
 	a.pages = tview.NewPages().AddPage("main", a.flex, true, true)

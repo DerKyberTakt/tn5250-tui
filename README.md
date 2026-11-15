@@ -68,6 +68,7 @@ To add a site, type `:sites` and choose add, or fill in the login form (Host, Po
 | Ctrl+K | Open the command bar |
 | Ctrl+T / Ctrl+W | New tab (site list) / close the tab |
 | Ctrl+PgUp / Ctrl+PgDn, Alt+1 - Alt+9 | Previous / next tab, tab by number |
+| Ctrl+\ | Split view: the next tab beside this one; when split, keyboard to the other pane |
 
 Field Exit, Field+ and Field- have no reliable key in a terminal; use `:key fieldExit`, `:key fieldPlus` and `:key fieldMinus`.
 
@@ -76,6 +77,10 @@ Field Exit, Field+ and Field- have no reliable key in a terminal; use `:key fiel
 Each connection is a tab. A tab bar appears above the screen once there are two: ` 1 PUB400  2 agent `, the active one in reverse video, a dropped one dimmed, a connecting one with `...`. Open another session from the site list (`:sites`, or Ctrl+T for a fresh tab with the list), with `:connect <site>` while this tab is connected, or with `:new <site>`. Switch with Ctrl+PgUp / Ctrl+PgDn or Alt+1 - Alt+9 (`:tab 2`, `:tab next`); Ctrl+W closes the tab (it asks when the tab is connected). Background tabs keep their sessions alive: a sign-on in progress finishes, and a dropped one says so when you come back.
 
 **Split view.** `:split` (or Ctrl+\) shows the next tab beside this one, left and right of a divider; `:split 3` picks the tab for the other pane, and with one tab open `:split` opens a new one with the site list. The keyboard, the cursor and the OIA line belong to one pane; `:split` or Ctrl+\ again moves them to the other pane, and switching to the tab that is already in the other pane does the same. Tab switching otherwise changes the focused pane's tab. The other pane's tab is underlined in the tab bar. `:unsplit` goes back to one pane and keeps both tabs. Each pane gets half the width: two 132-column screens fit side by side from 266 columns, two 80-column ones from 162; below that the pane scrolls to follow the cursor.
+
+## Local command line
+
+`:!dir` or `:!ls -l` runs a command on this machine through `cmd /c` or `sh -c` and streams its output into an eight-row pane under the 5250 screen (`:local` hides and shows it, `:local clear` empties it; one command at a time). For a real shell, `:sh` hands the console to `$SHELL` / `%COMSPEC%` (or `TN5250_TUI_SHELL`) and redraws the terminal when you type `exit`; every session stays connected meanwhile. Neither touches the host.
 
 ## Commands
 
@@ -89,6 +94,9 @@ Open the command bar with `:` (when the cursor is not in an input field) or with
 | `close` | Close the tab and its connection |
 | `split [n]` | Show tab n beside this one (no n: the next tab, or a new one); when split, move the keyboard to the other pane |
 | `unsplit` | Back to one pane; the other tab stays open |
+| `!<command>` | Run a command on this machine (not the host); its output streams into a pane under the screen |
+| `local [on\|off\|clear]` | Show, hide or empty that pane |
+| `sh` | Your shell in this console (`$SHELL`, `%COMSPEC%`, or `TN5250_TUI_SHELL`); `exit` returns to the terminal, the sessions stay connected |
 | `disconnect` | Close the connection, keep the tab |
 | `sites` | Site manager: list, add, edit, delete, connect |
 | `settings` | Settings page: screen size, code page, device name, column separators, SEU colouring, auto sign-on, trace file, keep-alive; saved as `defaults` in sites.json (also: `s` in the site list, Settings button on the login form) |

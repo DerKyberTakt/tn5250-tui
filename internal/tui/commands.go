@@ -130,6 +130,9 @@ func CommandHelp() [][2]string {
 		{"close", "close this tab and its connection (Ctrl+W)"},
 		{"split [n]", "show tab n beside this one (no n: the next tab, or a new one); when split, :split and Ctrl+\\ move the keyboard to the other pane"},
 		{"unsplit", "back to one pane (the other tab stays open)"},
+		{"!<command>", "run a command on this machine; its output shows in a pane under the screen"},
+		{"local [on|off|clear]", "show, hide or empty that pane"},
+		{"sh", "your shell in this console; exit returns to the terminal, sessions stay connected"},
 		{"disconnect", "close the connection, keep the tab"},
 		{"sites", "site manager: add, edit, delete, connect"},
 		{"settings", "defaults page: size, code page, device name, separators, SEU colours, sign-on, trace, keep-alive"},
@@ -157,11 +160,24 @@ func (a *App) RunCommand(line string) {
 
 // execute runs the command and returns the message to show ("" = none).
 func (a *App) execute(line string) string {
+	if l := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), ":")); strings.HasPrefix(l, "!") {
+		return a.runLocal(l[1:])
+	}
 	c, err := ParseCommand(line)
 	if err != nil {
 		return err.Error()
 	}
 	switch c.Name {
+	case "sh", "shell":
+		return a.shellOut()
+	case "local":
+		if len(c.Args) > 1 {
+			return "usage: local [on|off|clear]"
+		}
+		if len(c.Args) == 1 {
+			return a.localCmd(c.Args[0])
+		}
+		return a.localCmd("")
 	case "connect":
 		return a.cmdConnect(c)
 	case "disconnect":
