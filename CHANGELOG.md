@@ -1,6 +1,7 @@
 # Changelog
 
-## 0.1.0 - unreleased
+## 0.2.0 - 2026-11-16
+The first release with the agent surface: `tn5250-tui mcp` and `tn5250-tui attach`, which the TN5250 VS Code extension 0.2.7 (Agent Sessions view, AI Agent page) and desktop app rely on.
 - MCP `trace` tool: `from_start` returns the first lines of a session (the telnet negotiation with terminal type and NEW-ENVIRON), which the 200-line ring had dropped by the first screen; the first 60 lines are kept for good.
 - The host code page reaches the host: KBDTYPE, CODEPAGE and CHARSET are sent in the NEW-ENVIRON reply with or without a device name (before, a site without one left the host's virtual device on its system character set). The fake host accepts any NEW-ENVIRON reply by its framing.
 - Code pages 277, 278, 280, 284, 285, 297, 870, 871, 875, 1025, 1026 and 1153 (Latin-1 by country, Latin-2 with and without the euro, Greek, Cyrillic, Turkish), regenerated from the tn5250-terminal tables (its #16).
@@ -16,6 +17,8 @@
 - SEU edit and browse screens are coloured by language (CL, DDS, RPG fixed and free, SQL incl. embedded) as the emulators do, from the same rules; off with the "SEU syntax colouring" setting.
 - :settings opens a small settings page (screen size, code page, device name, separators, SEU colouring, auto sign-on, trace file, keep-alive) saved as defaults in sites.json.
 - Shift+Esc sends System Request, as in the emulators (Ctrl+X stays).
+
+## 0.1.0 - 2026-11-14
 - New sites and host targets default to the 27x132 screen (IBM-3477-FC); `:size 24x80` or the site setting gives the small screen.
 - Screen: a null cell outside any field shows nothing, and the attribute position is a plain blank; the sign-on screen no longer has underlines running from the end of each field to the right edge (the rule the emulator learned on its first day).
 
