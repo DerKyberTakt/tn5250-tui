@@ -2,7 +2,7 @@
 
 A lightweight 5250 terminal for the console. One static binary for Windows 10+ and Linux (macOS builds by accident), built on the engine of the tn5250-terminal project: telnet 5250 (RFC 1205/2877/4777), plain display (no enhanced interface, so the host draws windows and menus as text), code pages from generated tables, and a full keyboard model.
 
-> Status: early. Version 0.1.0 is not released yet; keys, commands and file formats may still change.
+> Status: early. 0.2.0 is the first release with the MCP server and `attach`; keys, commands and file formats may still change.
 
 ## Install
 
@@ -12,7 +12,7 @@ Linux and macOS (arm64):
 curl -fsSL https://raw.githubusercontent.com/DerKyberTakt/tn5250-tui/main/install.sh | sh
 ```
 
-Installs into `~/.local/bin` (or `/usr/local/bin` as root, or `$PREFIX/bin`), after verifying `SHA256SUMS`. Pin a version with `TN5250_TUI_VERSION=v0.1.0`.
+Installs into `~/.local/bin` (or `/usr/local/bin` as root, or `$PREFIX/bin`), after verifying `SHA256SUMS`. Pin a version with `TN5250_TUI_VERSION=v0.2.0`.
 
 Windows (PowerShell 5.1 or newer):
 
