@@ -687,8 +687,9 @@ func (m *Manager) Find(a FindArgs) (FindOut, error) {
 
 // TraceArgs is the input of trace.
 type TraceArgs struct {
-	Session string `json:"session"`
-	Lines   int    `json:"lines,omitempty" jsonschema:"how many of the last lines (default 50, at most 200)"`
+	Session   string `json:"session"`
+	Lines     int    `json:"lines,omitempty" jsonschema:"how many lines (default 50, at most 200; from_start keeps at most 60)"`
+	FromStart bool   `json:"from_start,omitempty" jsonschema:"the first lines of the session instead of the last: the telnet negotiation (terminal type, NEW-ENVIRON with KBDTYPE/CODEPAGE/CHARSET), which the ring has dropped by the first screen"`
 }
 
 // TraceOut is the output of trace.
@@ -708,6 +709,9 @@ func (m *Manager) Trace(a TraceArgs) (TraceOut, error) {
 	}
 	if n > TraceLines {
 		n = TraceLines
+	}
+	if a.FromStart {
+		return TraceOut{Lines: s.trace.First(n)}, nil
 	}
 	return TraceOut{Lines: s.trace.Last(n)}, nil
 }

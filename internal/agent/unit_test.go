@@ -359,6 +359,12 @@ func TestParseField(t *testing.T) {
 
 func TestRingKeepsLastLines(t *testing.T) {
 	r := newRing(5)
+	for _, n := range []string{"0", "1", "2"} {
+		r.Add("negotiation " + n)
+	}
+	if first := r.First(2); len(first) != 2 || !strings.HasSuffix(first[0], "negotiation 0") || !strings.HasSuffix(first[1], "negotiation 1") {
+		t.Fatalf("First(2) = %v", first)
+	}
 	for i := 0; i < 12; i++ {
 		r.Add(strings.Repeat("x", i))
 	}

@@ -127,7 +127,7 @@ func NewServer(m *Manager) *mcp.Server {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "trace",
-		Description: "The last trace lines of a session (data stream hex, engine commands). Data typed into hidden fields is masked.",
+		Description: "The last trace lines of a session (data stream hex, engine commands), or with from_start its first lines (the telnet negotiation). Data typed into hidden fields is masked.",
 		Annotations: readOnlyTool("Trace"),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in TraceArgs) (*mcp.CallToolResult, TraceOut, error) {
 		out, err := m.Trace(in)

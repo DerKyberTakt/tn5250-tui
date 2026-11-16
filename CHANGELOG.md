@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.1.0 - unreleased
+- MCP `trace` tool: `from_start` returns the first lines of a session (the telnet negotiation with terminal type and NEW-ENVIRON), which the 200-line ring had dropped by the first screen; the first 60 lines are kept for good.
 - The host code page reaches the host: KBDTYPE, CODEPAGE and CHARSET are sent in the NEW-ENVIRON reply with or without a device name (before, a site without one left the host's virtual device on its system character set). The fake host accepts any NEW-ENVIRON reply by its framing.
 - Code pages 277, 278, 280, 284, 285, 297, 870, 871, 875, 1025, 1026 and 1153 (Latin-1 by country, Latin-2 with and without the euro, Greek, Cyrillic, Turkish), regenerated from the tn5250-terminal tables (its #16).
 - Forms: Up/Down move between fields like Tab/Shift+Tab (a drop-down opens with Enter, not with the arrows); the focused field is lit white with a yellow label; Ctrl+S saves the site and settings forms. Scroll bars on the forms, the site list, help, SQL messages and local pane when they overflow.
