@@ -152,6 +152,8 @@ Passwords never come across: VS Code keeps them in its secret store, which no ot
 
 ## For AI agents: `tn5250-tui mcp` and `tn5250-tui attach`
 
+A step-by-step guide with the VS Code extension (install, the agent's sign-on, `.mcp.json`, watching the agent, audit): [TN5250 for AI agents](https://github.com/DerKyberTakt/tn5250-terminal/blob/main/docs/AI-AGENT.md).
+
 `tn5250-tui mcp` is an [MCP](https://modelcontextprotocol.io) server on stdin/stdout that hosts 5250 sessions for an agent such as Claude Code, on the same engine as the terminal. In the workspace's `.mcp.json`:
 
 ```json

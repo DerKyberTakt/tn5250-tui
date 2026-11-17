@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.1 - unreleased
+- `mcp`: the sites file is read again before every connect that names a site, so a site saved or re-enrolled while the server runs (the VS Code extension's Enroll User for AI Agent, `:sites` in another tn5250-tui) is used without restarting the server. A read that fails keeps the sites loaded so far.
+
 ## 0.2.0 - 2026-11-16
 The first release with the agent surface: `tn5250-tui mcp` and `tn5250-tui attach`, which the TN5250 VS Code extension 0.2.7 (Agent Sessions view, AI Agent page) and desktop app rely on.
 - MCP `trace` tool: `from_start` returns the first lines of a session (the telnet negotiation with terminal type and NEW-ENVIRON), which the 200-line ring had dropped by the first screen; the first 60 lines are kept for good.
