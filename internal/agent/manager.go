@@ -262,6 +262,14 @@ func (m *Manager) resolveTarget(a ConnectArgs) (target, error) {
 	var t target
 	haveSite := false
 	if siteName != "" {
+		if cfg.Reload != nil {
+			if f, err := cfg.Reload(); err == nil && f != nil {
+				m.mu.Lock()
+				m.cfg.Sites = f
+				m.mu.Unlock()
+				cfg.Sites = f
+			}
+		}
 		var st sites.Site
 		ok := false
 		if cfg.Sites != nil {

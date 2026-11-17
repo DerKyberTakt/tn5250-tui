@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -325,6 +326,11 @@ func TestResolveTarget(t *testing.T) {
 		},
 		Defaults: &sites.Defaults{ScreenSize: "27x132", CodePage: 273},
 	}
+	// The same file after the VS Code extension enrolled another user into TESTSYS.
+	reEnrolled := &sites.File{
+		Sites:    []sites.Site{{Name: "TESTSYS", Host: "pub400.com", Port: 992, TLS: true, User: "NEWUSER", Password: "newpw", ScreenSize: "24x80", DeviceName: "KWDEV1"}},
+		Defaults: f.Defaults,
+	}
 	tests := []struct {
 		name string
 		cfg  Config
@@ -350,6 +356,10 @@ func TestResolveTarget(t *testing.T) {
 			target{host: "127.0.0.1", port: 992, tls: true, size: "27x132", cp: 37}, ""},
 		{"device template is dropped", Config{Host: "127.0.0.1", DeviceName: "&USERN*"}, ConnectArgs{},
 			target{host: "127.0.0.1", port: 23, size: "27x132", cp: 37}, ""},
+		{"reload picks up a site re-enrolled while the server runs", Config{Sites: f, Reload: func() (*sites.File, error) { return reEnrolled, nil }}, ConnectArgs{Site: "TESTSYS"},
+			target{site: "TESTSYS", host: "pub400.com", port: 992, tls: true, user: "NEWUSER", password: "newpw", size: "24x80", cp: 273, device: "KWDEV1"}, ""},
+		{"a failed reload keeps the sites loaded so far", Config{Sites: f, Reload: func() (*sites.File, error) { return nil, errors.New("disk") }}, ConnectArgs{Site: "TESTSYS"},
+			target{site: "TESTSYS", host: "pub400.com", port: 992, tls: true, user: "SITEUSER", password: "sitepw", size: "24x80", cp: 273, device: "KWDEV1"}, ""},
 		{"bad size", Config{Host: "127.0.0.1"}, ConnectArgs{ScreenSize: "80x24"}, target{}, "screen_size"},
 		{"no host", Config{}, ConnectArgs{}, target{}, "no host"},
 		{"unknown site lists the saved ones", Config{Sites: f}, ConnectArgs{Site: "x"}, target{}, "TESTSYS, PLAIN"},

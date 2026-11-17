@@ -36,6 +36,11 @@ const (
 type Config struct {
 	// Sites is the saved-sites file; nil means no saved sites.
 	Sites *sites.File
+	// Reload, when set, re-reads the sites file before a connect that names a site, so a
+	// site saved or re-enrolled while the server runs (the VS Code extension's Enroll User
+	// for AI Agent, :sites in another tn5250-tui) is used without a restart. A failed read
+	// keeps the sites loaded so far.
+	Reload func() (*sites.File, error)
 	// Site is the default site name, used by connect when the call names neither a site nor a
 	// host and Host is empty.
 	Site string
