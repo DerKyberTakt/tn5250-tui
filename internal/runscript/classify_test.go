@@ -32,7 +32,7 @@ func TestClassify(t *testing.T) {
 		{"DLYJOB 5", CL, "DLYJOB 5"},
 		{"QSH CMD('ls')", CL, "QSH CMD('ls')"},
 		{"ls -l /home", QSH, "ls -l /home"},
-		{"/QOpenSys/pkgs/bin/python3 --version", QSH, "/QOpenSys/pkgs/bin/python3 --version"},
+		{"/QOpenSys/pkgs/bin/python3 --version", PASE, "/QOpenSys/pkgs/bin/python3 --version"},
 		{"./run.sh", QSH, "./run.sh"},
 		{"PATH=/QOpenSys/pkgs/bin:$PATH", QSH, "PATH=/QOpenSys/pkgs/bin:$PATH"},
 		{"db2 \"select 1 from sysibm.sysdummy1\"", QSH, "db2 \"select 1 from sysibm.sysdummy1\""},
@@ -73,7 +73,7 @@ func TestVerb(t *testing.T) {
 
 func TestClassifyPASE(t *testing.T) {
 	cases := map[string]Kind{
-		"PASE: bash -c \"echo hi\"":              PASE,
+		"PASE: bash -c \"echo hi\"":            PASE,
 		"/QOpenSys/pkgs/bin/python3 --version": PASE,
 		"git -C /home/jsmith/app status":       PASE,
 		"yum list installed":                   PASE,
