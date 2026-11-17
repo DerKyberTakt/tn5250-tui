@@ -22,3 +22,6 @@ Thumbs.db
 
 # local probes
 cmd/liveprobe/
+
+# saved session traces (any name): never committed
+*[Tt]race*.json
