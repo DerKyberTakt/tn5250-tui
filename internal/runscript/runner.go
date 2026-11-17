@@ -79,6 +79,12 @@ func New(o Options) *Session {
 func (s *Session) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.dropAll()
+}
+
+// dropAll closes every host-server connection; the next statement opens fresh ones. The
+// caller holds s.mu.
+func (s *Session) dropAll() {
 	if s.rows != nil {
 		_ = s.rows.Close()
 		s.rows = nil
@@ -159,19 +165,32 @@ func (s *Session) Run(st Classified, block int) (Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	start := time.Now()
-	var out Result
-	var err error
-	switch st.Kind {
-	case CL:
-		out, err = s.runCL(st.Text)
-	case QSH:
-		out, err = s.runQSH(st.Text)
-	default:
-		out, err = s.runSQL(st.Text, block)
+	had := s.db != nil || s.cmd != nil
+	out, err := s.runOnce(st, block)
+	if err != nil && had && connLost(err) {
+		// A connection that was open died under the statement (the server job ended, the
+		// network dropped, an idle socket was closed): every connection is dropped and the
+		// statement runs once more on fresh ones, as a person would do by hand.
+		s.dropAll()
+		out, err = s.runOnce(st, block)
+		if err == nil {
+			out.Messages = append(out.Messages, "reconnected: the host-server connection had been lost")
+		}
 	}
 	out.Statement = st
 	out.Elapsed = time.Since(start)
 	return out, err
+}
+
+func (s *Session) runOnce(st Classified, block int) (Result, error) {
+	switch st.Kind {
+	case CL:
+		return s.runCL(st.Text)
+	case QSH:
+		return s.runQSH(st.Text)
+	default:
+		return s.runSQL(st.Text, block)
+	}
 }
 
 // Fetch brings the next block of the open query.

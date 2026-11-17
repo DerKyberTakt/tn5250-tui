@@ -1,10 +1,9 @@
 # Changelog
 
-## 0.2.1 - unreleased
-- `mcp`: the sites file is read again before every connect that names a site, so a site saved or re-enrolled while the server runs (the VS Code extension's Enroll User for AI Agent, `:sites` in another tn5250-tui) is used without restarting the server. A read that fails keeps the sites loaded so far.
-
 ## 0.2.0 - 2026-11-16
 The first release with the agent surface: `tn5250-tui mcp` and `tn5250-tui attach`, which the TN5250 VS Code extension 0.2.7 (Agent Sessions view, AI Agent page) and desktop app rely on.
+- `:sql`: a host-server connection that died under a statement (the server job ended, the network dropped, an idle socket was closed) is dropped together with the others and the statement runs once more on fresh connections; the result says it reconnected. Before, the tab reported `connection failed` and the way on was a new `:sql` tab.
+- `mcp`: the sites file is read again before every connect that names a site, so a site saved or re-enrolled while the server runs (the VS Code extension's Enroll User for AI Agent, `:sites` in another tn5250-tui) is used without restarting the server. A read that fails keeps the sites loaded so far.
 - MCP `trace` tool: `from_start` returns the first lines of a session (the telnet negotiation with terminal type and NEW-ENVIRON), which the 200-line ring had dropped by the first screen; the first 60 lines are kept for good.
 - The host code page reaches the host: KBDTYPE, CODEPAGE and CHARSET are sent in the NEW-ENVIRON reply with or without a device name (before, a site without one left the host's virtual device on its system character set). The fake host accepts any NEW-ENVIRON reply by its framing.
 - Code pages 277, 278, 280, 284, 285, 297, 870, 871, 875, 1025, 1026 and 1153 (Latin-1 by country, Latin-2 with and without the euro, Greek, Cyrillic, Turkish), regenerated from the tn5250-terminal tables (its #16).
