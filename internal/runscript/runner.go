@@ -65,6 +65,8 @@ type Session struct {
 	aux  *db.Client // second database connection: reads spooled and stream files while a query is open
 	cmd  *rmtcmd.Client
 	rows *db.Rows
+	// paseCCSID is true once the server job was given CCSID 37 for PASE.
+	paseCCSID bool
 }
 
 // New prepares a session; nothing connects until Run.
@@ -188,6 +190,8 @@ func (s *Session) runOnce(st Classified, block int) (Result, error) {
 		return s.runCL(st.Text)
 	case QSH:
 		return s.runQSH(st.Text)
+	case PASE:
+		return s.runPASE(st.Text)
 	default:
 		return s.runSQL(st.Text, block)
 	}
@@ -416,6 +420,80 @@ func tempName() string {
 
 // runQSH runs a Qshell line with its output redirected to a stream file, reads the file
 // back through QSYS2.IFS_READ on the database server and removes it.
+// paseExitPrefix starts the last line a PASE run writes: the command's exit status.
+const paseExitPrefix = "tn5250-exit="
+
+// paseCommand runs a PASE line through QP2SHELL: /QOpenSys/usr/bin/sh -c with the open-source
+// packages on PATH, output and errors to stmf, then the exit status as a last line (QP2SHELL
+// itself does not fail when the command does).
+func paseCommand(text, stmf string) string {
+	script := "PATH=/QOpenSys/pkgs/bin:/QOpenSys/usr/bin:/usr/bin:$PATH; export PATH; { " + strings.TrimSpace(text) + " ; } > " + stmf + " 2>&1; echo \"" + paseExitPrefix + "$?\" >> " + stmf
+	return "CALL PGM(QP2SHELL) PARM('/QOpenSys/usr/bin/sh' '-c' " + quote(script) + ")"
+}
+
+// runPASE runs a PASE command line with its output redirected to a stream file, reads the
+// file back and returns the lines as rows; a non-zero exit status is an error result. PASE
+// refuses a job whose CCSID is 65535: when the first run says so, the server job is given
+// CCSID 37 and the line runs again.
+func (s *Session) runPASE(text string) (Result, error) {
+	c, err := s.command()
+	if err != nil {
+		return Result{}, err
+	}
+	stmf := tempName()
+	res, err := c.Run(paseCommand(text, stmf))
+	if err != nil {
+		_ = c.Close()
+		s.cmd = nil
+		return Result{}, fmt.Errorf("remote command server: %w", err)
+	}
+	if res.Failed() && !s.paseCCSID {
+		for _, m := range res.Messages {
+			if strings.Contains(m.Text, "65535") {
+				if r2, err2 := c.Run("CHGJOB CCSID(37)"); err2 == nil && !r2.Failed() {
+					s.paseCCSID = true
+					if res, err = c.Run(paseCommand(text, stmf)); err != nil {
+						_ = c.Close()
+						s.cmd = nil
+						return Result{}, fmt.Errorf("remote command server: %w", err)
+					}
+				}
+				break
+			}
+		}
+	}
+	out := Result{Kind: "none"}
+	for _, m := range res.Messages {
+		out.Messages = append(out.Messages, m.ID+": "+m.Text)
+	}
+	lines, err := s.all("SELECT LINE FROM TABLE(QSYS2.IFS_READ(PATH_NAME => '" + stmf + "', END_OF_LINE => 'ANY')) ORDER BY LINE_NUMBER")
+	if err != nil {
+		out.Messages = append(out.Messages, "the command's output could not be read: "+err.Error())
+	} else {
+		exit := ""
+		if n := len(lines); n > 0 && len(lines[n-1]) > 0 && lines[n-1][0] != nil && strings.HasPrefix(*lines[n-1][0], paseExitPrefix) {
+			exit = strings.TrimSpace(strings.TrimPrefix(*lines[n-1][0], paseExitPrefix))
+			lines = lines[:n-1]
+		}
+		if len(lines) > 0 {
+			out.Kind = "rows"
+			out.Columns, out.Types, out.Rows = []string{"OUTPUT"}, []string{"VARCHAR"}, lines
+		}
+		if exit != "" && exit != "0" {
+			out.Kind = "error"
+			out.Messages = append(out.Messages, "the command ended with exit status "+exit)
+		}
+	}
+	_, _ = c.Run("RMVLNK OBJLNK(" + quote(stmf) + ")")
+	if res.Failed() {
+		out.Kind = "error"
+		if len(out.Messages) == 0 {
+			out.Messages = []string{res.Err().Error()}
+		}
+	}
+	return out, nil
+}
+
 func (s *Session) runQSH(text string) (Result, error) {
 	c, err := s.command()
 	if err != nil {

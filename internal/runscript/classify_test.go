@@ -70,3 +70,29 @@ func TestVerb(t *testing.T) {
 		t.Fatal("Kind.String")
 	}
 }
+
+func TestClassifyPASE(t *testing.T) {
+	cases := map[string]Kind{
+		"PASE: bash -c \"echo hi\"":              PASE,
+		"/QOpenSys/pkgs/bin/python3 --version": PASE,
+		"git -C /home/jsmith/app status":       PASE,
+		"yum list installed":                   PASE,
+		"ls -l /home":                          QSH,
+		"openssl version":                      QSH,
+		"QSH: git status":                      QSH,
+		"/usr/bin/ls":                          QSH,
+	}
+	for in, want := range cases {
+		if got := Classify(in); got.Kind != want {
+			t.Errorf("%q: got %s (%s), want %s", in, got.Kind, got.Why, want)
+		}
+	}
+	if got := Classify("PASE: bash -c x"); got.Text != "bash -c x" || got.Why != "prefix PASE:" {
+		t.Errorf("prefix: %+v", got)
+	}
+	cmd := paseCommand("git status", "/tmp/t.txt")
+	want := "CALL PGM(QP2SHELL) PARM('/QOpenSys/usr/bin/sh' '-c' 'PATH=/QOpenSys/pkgs/bin:/QOpenSys/usr/bin:/usr/bin:$PATH; export PATH; { git status ; } > /tmp/t.txt 2>&1; echo \"tn5250-exit=$?\" >> /tmp/t.txt')"
+	if cmd != want {
+		t.Errorf("got  %s\nwant %s", cmd, want)
+	}
+}

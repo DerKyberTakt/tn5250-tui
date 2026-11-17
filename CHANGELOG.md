@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.1 - unreleased
+- `:sql` runs PASE command lines: `PASE: …`, a path under /QOpenSys, or a line that starts with an open-source package tool (git, python3, bash, node, npm, yum, curl, jq, …) goes through QP2SHELL as /QOpenSys/usr/bin/sh with /QOpenSys/pkgs/bin on PATH, as in an SSH session; its output comes back as rows and a non-zero exit status is an error. Qshell lines run as before. A server job whose CCSID is 65535, which PASE refuses, is given CCSID 37 on the first PASE line. Same rules as the desktop app's Run SQL Scripts.
+
 ## 0.2.0 - 2026-11-16
 The first release with the agent surface: `tn5250-tui mcp` and `tn5250-tui attach`, which the TN5250 VS Code extension 0.2.7 (Agent Sessions view, AI Agent page) and desktop app rely on.
 - `:sql`: a host-server connection that died under a statement (the server job ended, the network dropped, an idle socket was closed) is dropped together with the others and the statement runs once more on fresh connections; the result says it reconnected. Before, the tab reported `connection failed` and the way on was a new `:sql` tab.

@@ -24,6 +24,7 @@ const (
 	SQL Kind = iota
 	CL
 	QSH
+	PASE
 )
 
 func (k Kind) String() string {
@@ -32,6 +33,8 @@ func (k Kind) String() string {
 		return "CL"
 	case QSH:
 		return "QSH"
+	case PASE:
+		return "PASE"
 	}
 	return "SQL"
 }
@@ -46,7 +49,7 @@ type Classified struct {
 }
 
 var (
-	prefixRe   = regexp.MustCompile(`(?i)^\s*(SQL|CL|QSH|SH)\s*:\s*`)
+	prefixRe   = regexp.MustCompile(`(?i)^\s*(SQL|CL|QSH|SH|PASE)\s*:\s*`)
 	commentRe  = regexp.MustCompile(`^(\s|--[^\n]*(\n|$)|/\*[\s\S]*?\*/)+`)
 	firstWord  = regexp.MustCompile(`^([A-Za-z0-9_$#@./~-]+)`)
 	clShapeRe  = regexp.MustCompile(`(?i)^([A-Z0-9$#@_]{1,10}/)?[A-Z][A-Z0-9$#@_]{1,9}$`)
@@ -55,6 +58,15 @@ var (
 	callClRe   = regexp.MustCompile(`(?i)^CALL\s+(PGM\s*\(|[A-Z0-9$#@_]+(/[A-Z0-9$#@_]+)?\s*(PARM\s*\(|$))`)
 	wordStopRe = regexp.MustCompile(`[\s(]`)
 )
+
+// paseOnly are tools of /QOpenSys/pkgs/bin (the open-source packages) or that need the PASE
+// shell; the same list as the desktop's runKind.ts.
+var paseOnly = map[string]bool{
+	"bash": true, "zsh": true, "git": true, "python": true, "python3": true, "pip": true, "pip3": true, "node": true, "npm": true,
+	"npx": true, "yum": true, "rpm": true, "curl": true, "wget": true, "jq": true, "gcc": true, "g++": true, "make": true,
+	"cmake": true, "perl": true, "ruby": true, "php": true, "vim": true, "nano": true, "rsync": true, "tmux": true, "go": true,
+	"cargo": true, "rustc": true, "sudo": true, "htop": true, "tree": true, "ncdu": true, "bat": true, "rg": true, "fd": true,
+}
 
 // sqlKeywords start a statement the database server runs.
 var sqlKeywords = map[string]bool{
@@ -101,6 +113,8 @@ func Classify(text string) Classified {
 			return Classified{Kind: CL, Text: rest, Why: "prefix CL:"}
 		case "QSH", "SH":
 			return Classified{Kind: QSH, Text: rest, Why: "prefix QSH:"}
+		case "PASE":
+			return Classified{Kind: PASE, Text: rest, Why: "prefix PASE:"}
 		}
 		return Classified{Kind: SQL, Text: rest, Why: "prefix SQL:"}
 	}
@@ -119,9 +133,16 @@ func Classify(text string) Classified {
 	upper := strings.ToUpper(first)
 	rest := strings.TrimSpace(body[len(first):])
 
-	// Shell: a path, an assignment, a known command, or a pipeline that is not SQL.
+	// PASE: a path under /QOpenSys, or a tool of the open-source packages that Qshell's PATH
+	// does not reach. Shell: a path, an assignment, a known command, or a pipeline that is not SQL.
+	if strings.HasPrefix(first, "/QOpenSys/") {
+		return Classified{Kind: PASE, Text: text, Why: "PASE path " + first}
+	}
 	if strings.HasPrefix(first, "/") || strings.HasPrefix(first, "./") || strings.HasPrefix(first, "~") || strings.HasPrefix(first, "../") {
 		return Classified{Kind: QSH, Text: text, Why: "shell path " + first}
+	}
+	if paseOnly[first] {
+		return Classified{Kind: PASE, Text: text, Why: "PASE command " + first}
 	}
 	if assignRe.MatchString(body) && !sqlKeywords[upper] {
 		return Classified{Kind: QSH, Text: text, Why: "shell assignment"}
