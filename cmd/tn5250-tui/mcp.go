@@ -27,7 +27,7 @@ func runMCP(args []string) int {
 	useTLS := fs.Bool("tls", false, "telnet over TLS for --host")
 	trustAny := fs.Bool("trust-any-certificate", false, "skip the TLS certificate check for --host")
 	user := fs.String("user", "", "user profile for the default target (env TN5250_USER)")
-	password := fs.String("password", "", "password for --user (env TN5250_PASSWORD; prefer the sites file)")
+	password := fs.String("password", "", "password for --user (env TN5250_PASSWORD). Visible to other local users in the process list: the sites file (encrypted) is the recommended way")
 	size := fs.String("size", "", "screen size 27x132 (default) or 24x80")
 	codePage := fs.Int("cp", 0, "EBCDIC code page (default 37)")
 	device := fs.String("device", "", "workstation (device) name to request")

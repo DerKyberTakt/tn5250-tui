@@ -160,7 +160,7 @@ A step-by-step guide with the VS Code extension (install, the agent's sign-on, `
 { "mcpServers": { "tn5250": { "command": "tn5250-tui", "args": ["mcp", "--site", "agent", "--read-only"] } } }
 ```
 
-`agent` is a saved site whose user is the agent's own profile (give the agent its own user profile; the host, not the agent, then decides what it may do). Tools: `connect`, `screen`, `press`, `type`, `fill`, `wait`, `find`, `sessions`, `disconnect`, `trace` (`from_start` for the negotiation), `dump`; every key waits for the host (keyboard unlocked and the screen quiet for 120 ms, 15 s cap). `--read-only` refuses typed text that starts a command that changes things (DLT*, CLR*, CHG*, CRT*, RMV*, UPD*, SBMJOB, CALL, RUNSQL, ...). `--audit FILE` appends one JSON line per agent action (passwords never appear; traces are masked as in the terminal). Credentials never travel through the MCP transport: they come from the sites file, `--user/--password` or `TN5250_USER`/`TN5250_PASSWORD`. A skill for Claude Code is in [`skill/tn5250-agent`](skill/tn5250-agent/SKILL.md).
+`agent` is a saved site whose user is the agent's own profile (give the agent its own user profile; the host, not the agent, then decides what it may do). Tools: `connect`, `screen`, `press`, `type`, `fill`, `wait`, `find`, `sessions`, `disconnect`, `trace` (`from_start` for the negotiation), `dump`; every key waits for the host (keyboard unlocked and the screen quiet for 120 ms, 15 s cap). `--read-only` refuses typed text that starts a command that changes things (DLT*, CLR*, CHG*, CRT*, RMV*, UPD*, SBMJOB, CALL, RUNSQL, ...). `--audit FILE` appends one JSON line per agent action (passwords never appear; traces are masked as in the terminal). Credentials come from the sites file, `--user/--password` or `TN5250_USER`/`TN5250_PASSWORD`. `--password` on the command line is visible to other local users in the process list; the sites file is the recommended way. A skill for Claude Code is in [`skill/tn5250-agent`](skill/tn5250-agent/SKILL.md).
 
 Watch what the agent does: the server listens on 127.0.0.1 (random port, token in `<sites dir>/agent/<pid>.json`, mode 0600) and
 
@@ -168,6 +168,7 @@ Watch what the agent does: the server listens on 127.0.0.1 (random port, token i
 tn5250-tui attach            # the newest server's first session, live, read-only
 tn5250-tui attach --list     # the running servers and their sessions
 tn5250-tui attach s2         # a session by handle; Tab cycles, r reloads, q quits
+TN5250_VIEWER_TOKEN=... tn5250-tui attach --addr 127.0.0.1:PORT   # or --token-file FILE; --token T also works but shows in the process list
 ```
 
 renders it in any terminal (a VS Code terminal too). `--no-listen` turns the listener off.

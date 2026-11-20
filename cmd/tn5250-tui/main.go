@@ -35,7 +35,7 @@ func main() {
 	site := fs.String("site", "", "connect to this saved site")
 	useTLS := fs.Bool("tls", false, "telnet over TLS (host target only; a site keeps its own setting)")
 	user := fs.String("user", "", "sign on as this user profile (with --password)")
-	password := fs.String("password", "", "password for --user (plain text, as the sites file)")
+	password := fs.String("password", "", "password for --user. Visible to other local users in the process list: the sites file (encrypted) is the recommended way")
 	traceFile := fs.String("trace", "", "write a hex trace of the connection to this file")
 	size := fs.String("size", "", "screen size for a host target: 27x132 (default) or 24x80")
 	codePage := fs.Int("cp", 0, "EBCDIC code page for a host target (default 37)")

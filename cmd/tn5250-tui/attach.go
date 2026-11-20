@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/DerKyberTakt/tn5250-tui/internal/viewer"
@@ -18,11 +19,13 @@ func runAttach(args []string) int {
 	fs.SetOutput(os.Stderr)
 	pid := fs.Int("pid", 0, "the server process to attach to (default: the newest)")
 	addr := fs.String("addr", "", "server address (with --token; skips the token files)")
-	token := fs.String("token", "", "server token for --addr")
+	token := fs.String("token", "", "server token for --addr (visible to other local users in the process list; prefer TN5250_VIEWER_TOKEN or --token-file)")
+	tokenFile := fs.String("token-file", "", "file holding the server token for --addr (read once; keep it mode 0600)")
 	list := fs.Bool("list", false, "list the running servers and their sessions, then exit")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: tn5250-tui attach [--pid N | --addr A --token T] [--list] [session]")
+		fmt.Fprintln(os.Stderr, "usage: tn5250-tui attach [--pid N | --addr A [--token-file F | --token T]] [--list] [session]")
 		fs.PrintDefaults()
+		fmt.Fprintln(os.Stderr, "\nthe token for --addr comes from --token-file, else the TN5250_VIEWER_TOKEN environment variable, else --token (which other local users can read from the process list)")
 		fmt.Fprintf(os.Stderr, "\ntoken files: %s\n", viewer.TokenDir())
 	}
 	if err := fs.Parse(args); err != nil {
@@ -33,7 +36,12 @@ func runAttach(args []string) int {
 	}
 	var entries []viewer.TokenFile
 	if *addr != "" {
-		entries = []viewer.TokenFile{{Addr: *addr, Token: *token, Label: "--addr"}}
+		tok, err := resolveViewerToken(*token, *tokenFile, os.Getenv)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "tn5250-tui attach:", err)
+			return 2
+		}
+		entries = []viewer.TokenFile{{Addr: *addr, Token: tok, Label: "--addr"}}
 	} else {
 		var err error
 		entries, err = viewer.ListTokens(true)
@@ -42,7 +50,7 @@ func runAttach(args []string) int {
 			return 1
 		}
 		if len(entries) == 0 {
-			fmt.Fprintln(os.Stderr, "tn5250-tui attach: no running tn5250-tui mcp server (start one, or give --addr/--token)")
+			fmt.Fprintln(os.Stderr, "tn5250-tui attach: no running tn5250-tui mcp server (start one, or give --addr with a token)")
 			return 1
 		}
 	}
@@ -95,4 +103,28 @@ func runAttach(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// EnvViewerToken names the environment variable `attach --addr` reads the server token from,
+// so the token need not appear in the process list.
+const EnvViewerToken = "TN5250_VIEWER_TOKEN"
+
+// resolveViewerToken picks the token for `attach --addr`: the token file (read once, first
+// line), else the environment variable, else the --token flag (kept for compatibility).
+func resolveViewerToken(flagToken, file string, getenv func(string) string) (string, error) {
+	if file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return "", fmt.Errorf("token file: %w", err)
+		}
+		tok := strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0])
+		if tok == "" {
+			return "", fmt.Errorf("token file %s is empty", file)
+		}
+		return tok, nil
+	}
+	if v := strings.TrimSpace(getenv(EnvViewerToken)); v != "" {
+		return v, nil
+	}
+	return flagToken, nil
 }
