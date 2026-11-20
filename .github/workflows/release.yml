@@ -9,8 +9,20 @@ permissions:
   contents: write
 
 jobs:
+  # A tag on an untested commit must not publish: vet and the tests (with the race detector) run first.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: check
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
