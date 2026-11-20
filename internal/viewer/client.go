@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -95,6 +96,33 @@ func (cl *Client) Sessions() ([]SessionInfo, error) {
 			return m.Sessions, nil
 		case "error":
 			return nil, errors.New(m.Text)
+		}
+		// a late frame of an earlier watch: skip
+	}
+}
+
+// End asks the server to sign a session off (when signoff is set) and close it.
+func (cl *Client) End(session string, signoff bool) (signedOff bool, err error) {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	if err := cl.send(Msg{T: "end", Session: session, Signoff: signoff}); err != nil {
+		return false, err
+	}
+	_ = cl.c.SetReadDeadline(time.Now().Add(15 * time.Second))
+	defer func() { _ = cl.c.SetReadDeadline(time.Time{}) }()
+	for {
+		m, err := cl.read()
+		if err != nil {
+			return false, err
+		}
+		switch m.T {
+		case "ended":
+			return m.Signoff, nil
+		case "error":
+			if strings.HasPrefix(m.Text, "unknown request") {
+				return false, errors.New("this server cannot end sessions (it needs tn5250-tui 0.2.1 or later)")
+			}
+			return false, errors.New(m.Text)
 		}
 		// a late frame of an earlier watch: skip
 	}

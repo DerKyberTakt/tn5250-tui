@@ -19,6 +19,9 @@ type Source interface {
 	// Subscribe returns a channel that receives a value after every change of the
 	// session (coalesced), a cancel function, and ok=false for an unknown session.
 	Subscribe(session string) (ch <-chan struct{}, cancel func(), ok bool)
+	// End signs a session off (when asked and a command line is on its screen) and closes
+	// it. It is the one request that changes anything; the token is what authorises it.
+	End(session string, signoff bool) (signedOff bool, err error)
 }
 
 // Server accepts viewers on a loopback listener.
@@ -194,6 +197,13 @@ func (s *Server) serve(c net.Conn) {
 					}
 				}
 			}()
+		case "end":
+			signedOff, err := s.src.End(m.Session, m.Signoff)
+			if err != nil {
+				_ = send(Msg{T: "error", Text: err.Error()})
+				continue
+			}
+			_ = send(Msg{T: "ended", Session: m.Session, Signoff: signedOff})
 		case "bye":
 			return
 		default:

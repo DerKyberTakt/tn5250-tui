@@ -29,7 +29,13 @@ type Manager struct {
 	sessions map[string]*session
 	counter  int
 	pending  int // connects in progress: they hold a slot before they have a session
+	// refused remembers a sign-on the host turned down, by endpoint and user (see signonGate).
+	refused map[string]refusal
 }
+
+// reapAfter is how long a session whose connection ended stays listed (so the agent can still
+// read its last screen) before the manager forgets it.
+var reapAfter = 60 * time.Second
 
 // NewManager builds a manager. It opens Config.AuditFile when set.
 func NewManager(cfg Config) (*Manager, error) {
@@ -66,6 +72,22 @@ func (m *Manager) Close() {
 	}
 	m.sessions = map[string]*session{}
 	m.mu.Unlock()
+	// The server is going away (the agent's client closed): sign off where a command line is on
+	// the screen, so the host does not keep the job and the user's device session.
+	var typed []*session
+	for _, s := range all {
+		if alive, _ := s.isConnected(); alive && s.typeSignoff() {
+			typed = append(typed, s)
+			m.record(s, "disconnect", map[string]any{"signoff": true, "signed_off": true, "reason": "server exit"}, 0, nil)
+		}
+	}
+	if len(typed) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		for _, s := range typed {
+			_, _ = settle(ctx, s, settleOpts{Max: 2 * time.Second})
+		}
+		cancel()
+	}
 	for _, s := range all {
 		s.close()
 	}
@@ -97,6 +119,7 @@ type session struct {
 	stateMu   sync.Mutex
 	connected bool
 	closedErr string
+	closedAt  time.Time
 	closed    bool
 }
 
@@ -111,6 +134,7 @@ func (s *session) markClosed(reason string) {
 	if s.connected {
 		s.connected = false
 		s.closedErr = reason
+		s.closedAt = time.Now()
 	}
 	s.stateMu.Unlock()
 	s.notif.Bump()
@@ -233,7 +257,7 @@ type ConnectOut struct {
 	Session  string    `json:"session"`
 	Device   string    `json:"device,omitempty"`
 	Size     string    `json:"size"`
-	SignedOn bool      `json:"signed_on" jsonschema:"true when connect typed the sign-on"`
+	SignedOn bool      `json:"signed_on" jsonschema:"true when connect typed the sign-on and the host accepted it"`
 	Screen   ScreenOut `json:"screen"`
 }
 
@@ -443,6 +467,11 @@ func (m *Manager) Connect(ctx context.Context, a ConnectArgs) (out ConnectOut, e
 		}
 	}
 	timeout := timeoutOf(a.TimeoutMs)
+	if signon {
+		if err := m.signonGate(t); err != nil {
+			return out, err
+		}
+	}
 
 	m.mu.Lock()
 	if m.liveCount()+m.pending >= m.cfg.MaxSessions {
@@ -537,12 +566,31 @@ func (m *Manager) Connect(ctx context.Context, a ConnectArgs) (out ConnectOut, e
 			err = fmt.Errorf("connected as %s but the sign-on was refused: %w; the session stays open (use screen, type, fill)", handle, serr)
 			return out, err
 		}
-		out.SignedOn = true
 		res, err = settle(ctx, s, settleOpts{Max: timeout})
 		if err != nil {
 			return out, err
 		}
 		settled = res.Settled
+		// The host answers a refused sign-on with the sign-on display and a message. Only a
+		// settled sign-on display counts as a refusal: a host that is still working must not be
+		// taken for one (signed_on is then false, the session stays open, nothing is remembered).
+		s.mu.Lock()
+		snap := s.snapshot()
+		s.mu.Unlock()
+		msg, refused, limit := signonRefusal(snap)
+		out.SignedOn = !refused
+		if settled {
+			if refused {
+				m.drop(s)
+				s.close()
+				user := strings.ToUpper(t.user)
+				if limit {
+					return out, fmt.Errorf("the host refused the sign-on: too many sessions for user %s (%s). Sign off or close one of that user's sessions (sessions lists the agent's own), then connect again; this connection was closed", user, msg)
+				}
+				m.noteRefused(t, msg)
+				return out, fmt.Errorf("the host refused the sign-on for user %s (%s). This connection was closed and connect will not try this password again: every refused attempt counts toward disabling the profile. Tell the user; do not retry", user, msg)
+			}
+		}
 	}
 	scr, err := s.screenOf(ScreenOpts{})
 	if err != nil {
@@ -699,6 +747,7 @@ func (m *Manager) Sessions() SessionsOut {
 	if m.cfg.ReadOnly {
 		out.Note = "read-only mode: typing that starts " + strings.Join(guardedVerbs, "/") + " is refused; ask the user to run those"
 	}
+	m.reap()
 	for _, h := range m.Handles() {
 		s, err := m.get(h)
 		if err != nil {
@@ -713,6 +762,47 @@ func (m *Manager) Sessions() SessionsOut {
 		})
 	}
 	return out
+}
+
+// reap forgets sessions whose connection ended more than reapAfter ago, so a list (and a
+// viewer) never shows a long-dead session beside a new one.
+func (m *Manager) reap() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for h, s := range m.sessions {
+		s.stateMu.Lock()
+		dead := !s.connected && !s.closedAt.IsZero() && time.Since(s.closedAt) > reapAfter
+		s.stateMu.Unlock()
+		if dead {
+			delete(m.sessions, h)
+		}
+	}
+}
+
+// End closes a session on behalf of a person watching it (the viewer's "end" request, the
+// extension's Sign Off and Close): SIGNOFF is typed first when signoff is set and a command
+// line is on the screen. It is recorded in the audit log like the agent's own disconnect.
+func (m *Manager) End(handle string, signoff bool) (signedOff bool, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := m.Disconnect(ctx, DisconnectArgs{Session: handle, Signoff: signoff})
+	return out.SignedOff, err
+}
+
+// typeSignoff types SIGNOFF and Enter when the screen has a command line; it reports whether
+// it did.
+func (s *session) typeSignoff() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snap := s.snapshot()
+	for _, v := range fieldViews(snap) {
+		if !v.Bypass && isCommandField(v) {
+			s.typeInto(snap, v, "SIGNOFF", true, true)
+			s.eng.Press(tn5250.ActionEnter)
+			return true
+		}
+	}
+	return false
 }
 
 func inhibitedOr(s string) string {
@@ -1222,22 +1312,7 @@ func (m *Manager) Disconnect(ctx context.Context, a DisconnectArgs) (out Disconn
 		m.record(s, "disconnect", map[string]any{"signoff": a.Signoff, "signed_off": out.SignedOff}, before, err)
 	}()
 	if alive, _ := s.isConnected(); alive && a.Signoff {
-		s.mu.Lock()
-		snap := s.snapshot()
-		var cmd *fieldView
-		for _, v := range fieldViews(snap) {
-			if !v.Bypass && isCommandField(v) {
-				v := v
-				cmd = &v
-				break
-			}
-		}
-		if cmd != nil {
-			s.typeInto(snap, *cmd, "SIGNOFF", true, true)
-			s.eng.Press(tn5250.ActionEnter)
-			out.SignedOff = true
-		}
-		s.mu.Unlock()
+		out.SignedOff = s.typeSignoff()
 		if out.SignedOff {
 			_, _ = settle(ctx, s, settleOpts{Max: 3 * time.Second})
 		}

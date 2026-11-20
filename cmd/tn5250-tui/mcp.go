@@ -153,6 +153,10 @@ func (s managerSource) Frame(session string) (viewer.Frame, bool) {
 	return viewer.EncodeFrame(session, snap, oia), true
 }
 
+func (s managerSource) End(session string, signoff bool) (bool, error) {
+	return s.m.End(session, signoff)
+}
+
 func (s managerSource) Subscribe(session string) (<-chan struct{}, func(), bool) {
 	ch, cancel, err := s.m.Subscribe(session)
 	if err != nil {

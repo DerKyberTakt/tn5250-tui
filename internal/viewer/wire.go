@@ -15,7 +15,7 @@ import (
 
 // Msg is one line on the wire, either way.
 type Msg struct {
-	T string `json:"t"` // hello, list, watch, sessions, frame, closed, error, bye
+	T string `json:"t"` // hello, list, watch, end, sessions, frame, closed, ended, error, bye
 	// Token authenticates a hello.
 	Token string `json:"token,omitempty"`
 	// Session names the session for watch, frame and closed.
@@ -26,6 +26,8 @@ type Msg struct {
 	Frame *Frame `json:"frame,omitempty"`
 	// Text is an error message or a note.
 	Text string `json:"text,omitempty"`
+	// Signoff asks an end to type SIGNOFF first; in the answer it says whether that happened.
+	Signoff bool `json:"signoff,omitempty"`
 }
 
 // SessionInfo describes one session of the server.

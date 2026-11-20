@@ -558,3 +558,70 @@ func TestNotifierSubscribe(t *testing.T) {
 		t.Errorf("seq %d", n.Seq())
 	}
 }
+
+// signOnSnap is an IBM i sign-on display: user, non-display password, three more fields.
+func signOnSnap(message string) tn5250.Snapshot {
+	const cols = 80
+	lines := map[int]string{
+		0: "                                   Sign On",
+		5: " User  . . . . . . . . . . . . . .",
+		6: " Password  . . . . . . . . . . . .",
+		7: " Program/procedure . . . . . . . .",
+	}
+	if message != "" {
+		lines[23] = message
+	}
+	return snapBuilder{rows: 24, cols: cols, lines: lines, fields: []tn5250.FieldInfo{
+		fieldAt(cols, 5, 53, 10, nil),
+		fieldAt(cols, 6, 53, 10, func(f *tn5250.FieldInfo) { f.Nondisplay = true }),
+		fieldAt(cols, 7, 53, 10, nil),
+	}}.build()
+}
+
+func TestSignonRefusal(t *testing.T) {
+	msg, refused, limit := signonRefusal(signOnSnap("CPF1107 - Password not correct for user profile."))
+	if !refused || limit || !strings.Contains(msg, "CPF1107") {
+		t.Errorf("wrong password: msg=%q refused=%v limit=%v", msg, refused, limit)
+	}
+	msg, refused, limit = signonRefusal(signOnSnap("CPF1220 - Device session limit reached. No more sessions allowed."))
+	if !refused || !limit || !strings.Contains(msg, "CPF1220") {
+		t.Errorf("session limit: msg=%q refused=%v limit=%v", msg, refused, limit)
+	}
+	// a host whose sign-on display carries no message id: the last line with text is the message
+	msg, refused, _ = signonRefusal(signOnSnap("User DEMO has reached device session limit"))
+	if !refused || !strings.Contains(msg, "session limit") {
+		t.Errorf("no id: msg=%q refused=%v", msg, refused)
+	}
+	// a menu after a good sign-on: one input field, nothing non-display
+	menu := snapBuilder{rows: 24, cols: 80, lines: map[int]string{0: " MAIN   IBM i Main Menu", 19: " Selection or command", 20: " ===>"},
+		fields: []tn5250.FieldInfo{fieldAt(80, 20, 7, 70, nil)}}.build()
+	if _, refused, _ := signonRefusal(menu); refused {
+		t.Error("a menu must not read as a refused sign-on")
+	}
+}
+
+func TestSignonGate(t *testing.T) {
+	m, _ := newTestManager(t, Config{})
+	tg := target{host: "PUB400.COM", port: 992, user: "demo", password: "old"}
+	if err := m.signonGate(tg); err != nil {
+		t.Fatalf("nothing was refused yet: %v", err)
+	}
+	m.noteRefused(tg, "CPF1107 - Password not correct for user profile.")
+	err := m.signonGate(target{host: "pub400.com", port: 992, user: "DEMO", password: "old"})
+	if err == nil || !strings.Contains(err.Error(), "not signing on again") || !strings.Contains(err.Error(), "CPF1107") {
+		t.Fatalf("same user, same password must be gated: %v", err)
+	}
+	if strings.Contains(err.Error(), "old") && strings.Contains(err.Error(), `"old"`) {
+		t.Error("the password is in the error")
+	}
+	// a corrected password, another user and another endpoint all pass
+	for _, ok := range []target{
+		{host: "pub400.com", port: 992, user: "demo", password: "new"},
+		{host: "pub400.com", port: 992, user: "other", password: "old"},
+		{host: "pub400.com", port: 23, user: "demo", password: "old"},
+	} {
+		if err := m.signonGate(ok); err != nil {
+			t.Errorf("%+v must pass: %v", ok.user, err)
+		}
+	}
+}

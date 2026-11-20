@@ -597,3 +597,53 @@ func TestAuditFailureRefusesActions(t *testing.T) {
 		}
 	})
 }
+
+// A session whose connection ended stays listed for a while (its last screen can still be
+// read), then the manager forgets it, so a list never shows a long-dead session.
+func TestClosedSessionsAreReaped(t *testing.T) {
+	host, port := startFake(t)
+	m, _ := newTestManager(t, Config{})
+	signon := false
+	out, err := m.Connect(ctxT(t), ConnectArgs{Host: host, Port: port, ScreenSize: "27x132", Signon: &signon, TimeoutMs: 10000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := m.get(out.Session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.close()
+	if n := len(m.Sessions().Sessions); n != 1 {
+		t.Fatalf("a session that just closed must still be listed, got %d", n)
+	}
+	old := reapAfter
+	reapAfter = 0
+	defer func() { reapAfter = old }()
+	time.Sleep(5 * time.Millisecond)
+	if n := len(m.Sessions().Sessions); n != 0 {
+		t.Fatalf("the closed session was not reaped: %d listed", n)
+	}
+}
+
+// End (the viewer's request) closes a session and writes the audit line.
+func TestEndClosesAndAudits(t *testing.T) {
+	host, port := startFake(t)
+	m, audit := newTestManager(t, Config{})
+	signon := false
+	out, err := m.Connect(ctxT(t), ConnectArgs{Host: host, Port: port, ScreenSize: "27x132", Signon: &signon, TimeoutMs: 10000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.End(out.Session, true); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(m.Sessions().Sessions); n != 0 {
+		t.Fatalf("%d sessions after End", n)
+	}
+	if !strings.Contains(audit.String(), `"disconnect"`) {
+		t.Error("End left no audit line")
+	}
+	if _, err := m.End("s99", true); err == nil {
+		t.Error("ending an unknown session must fail")
+	}
+}
