@@ -261,6 +261,9 @@ func (m *Manager) resolveTarget(a ConnectArgs) (target, error) {
 	}
 	var t target
 	haveSite := false
+	var siteHost string
+	var sitePort int
+	var siteTLS bool
 	if siteName != "" {
 		if cfg.Reload != nil {
 			if f, err := cfg.Reload(); err == nil && f != nil {
@@ -288,6 +291,8 @@ func (m *Manager) resolveTarget(a ConnectArgs) (target, error) {
 			return t, fmt.Errorf("no saved site %q (saved: %s)", siteName, strings.Join(names, ", "))
 		}
 		haveSite = true
+		siteHost, siteTLS = st.Host, st.TLS
+		sitePort = cfg.Sites.Complete(sites.Site{Port: st.Port, TLS: st.TLS}).Port
 		t = target{site: st.Name, host: st.Host, port: st.Port, tls: st.TLS, trustAny: st.TrustAnyCertificate,
 			user: st.User, password: st.Password, size: st.ScreenSize, cp: st.CodePage, device: st.DeviceName}
 	}
@@ -329,11 +334,14 @@ func (m *Manager) resolveTarget(a ConnectArgs) (target, error) {
 		}
 		t.trustAny = t.trustAny || cfg.TrustAny
 	}
+	defaultCreds := false
 	if t.user == "" {
 		t.user = cfg.User
+		defaultCreds = defaultCreds || cfg.User != ""
 	}
 	if t.password == "" {
 		t.password = cfg.Password
+		defaultCreds = defaultCreds || cfg.Password != ""
 	}
 	if t.size == "" {
 		t.size = cfg.ScreenSize
@@ -349,6 +357,38 @@ func (m *Manager) resolveTarget(a ConnectArgs) (target, error) {
 	}
 	done := cfg.Sites.Complete(sites.Site{Port: t.port, TLS: t.tls, ScreenSize: t.size, CodePage: t.cp, DeviceName: t.device})
 	t.port, t.size, t.cp, t.device = done.Port, done.ScreenSize, done.CodePage, done.DeviceName
+	// A stored credential belongs to the endpoint it was saved for: host, port and TLS. A call
+	// that points the connection elsewhere does not carry the saved user, password or
+	// trust-any-certificate setting along (the sign-on is then skipped unless the call brings its
+	// own user and password). Dropping TLS on the saved endpoint is refused outright.
+	if haveSite {
+		sameEndpoint := strings.EqualFold(t.host, siteHost) && t.port == sitePort
+		if sameEndpoint && siteTLS && !t.tls {
+			return t, fmt.Errorf("site %q uses TLS; tls=false would send its credentials in clear text (refused)", t.site)
+		}
+		if !sameEndpoint || t.tls != siteTLS {
+			t.trustAny = cfg.TrustAny
+			// The call's own password is the agent's choice; anything else (the saved one, a
+			// default) stays home, also when the call only names a different user.
+			if a.Password == "" {
+				t.password = ""
+				if a.User == "" {
+					t.user = ""
+				}
+			}
+		}
+	}
+	if defaultCreds && cfg.Host != "" {
+		def := cfg.Sites.Complete(sites.Site{Port: cfg.Port, TLS: cfg.TLS})
+		if !strings.EqualFold(t.host, cfg.Host) || t.port != def.Port || t.tls != cfg.TLS {
+			if a.User == "" && t.user == cfg.User {
+				t.user = ""
+			}
+			if a.Password == "" && t.password == cfg.Password {
+				t.password = ""
+			}
+		}
+	}
 	if t.size != "24x80" && t.size != "27x132" {
 		return t, fmt.Errorf("screen_size %q is not supported (use 24x80 or 27x132)", t.size)
 	}
@@ -371,10 +411,18 @@ func (m *Manager) liveCount() int {
 // Connect opens a session, waits for the first unlocked screen and, when asked, signs on.
 func (m *Manager) Connect(ctx context.Context, a ConnectArgs) (out ConnectOut, err error) {
 	var s *session
+	var tlsUsed bool
 	defer func() {
 		args := map[string]any{"site": a.Site, "host": a.Host, "user": a.User}
+		if a.Port != 0 {
+			args["port"] = a.Port
+		}
+		if a.TLS != nil {
+			args["tls"] = *a.TLS
+		}
 		if s != nil {
-			args["site"], args["host"] = s.site, s.host
+			args["site"], args["host"], args["port"] = s.site, s.host, s.port
+			args["tls"] = tlsUsed
 		}
 		m.record(s, "connect", args, 0, err)
 	}()
@@ -382,6 +430,7 @@ func (m *Manager) Connect(ctx context.Context, a ConnectArgs) (out ConnectOut, e
 	if err != nil {
 		return out, err
 	}
+	tlsUsed = t.tls
 	signon := t.user != "" && t.password != ""
 	if a.Signon != nil {
 		signon = *a.Signon

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -479,5 +480,70 @@ func TestHostClosesConnection(t *testing.T) {
 	}
 	if ss := m.Sessions(); ss.Sessions[0].Connected {
 		t.Error("sessions must show it disconnected")
+	}
+}
+
+// A saved or default credential belongs to the endpoint it was saved for: the agent cannot
+// aim it at another host, port or plain-text transport with the connect arguments.
+func TestCredentialsBoundToEndpoint(t *testing.T) {
+	no := false
+	f := &sites.File{Sites: []sites.Site{
+		{Name: "LAB", Host: "127.0.0.1", Port: 992, TLS: true, TrustAnyCertificate: true, User: "AGENT1", Password: "Fake-Pass-12345"},
+	}}
+	tests := []struct {
+		name     string
+		cfg      Config
+		args     ConnectArgs
+		user, pw string
+		trustAny bool
+		fail     string
+	}{
+		{"same endpoint keeps them", Config{Sites: f}, ConnectArgs{Site: "LAB"}, "AGENT1", "Fake-Pass-12345", true, ""},
+		{"same endpoint spelled again", Config{Sites: f}, ConnectArgs{Site: "LAB", Host: "127.0.0.1", Port: 992}, "AGENT1", "Fake-Pass-12345", true, ""},
+		{"other host", Config{Sites: f}, ConnectArgs{Site: "LAB", Host: "localhost"}, "", "", false, ""},
+		{"other port", Config{Sites: f}, ConnectArgs{Site: "LAB", Port: 12042}, "", "", false, ""},
+		{"tls off on the saved endpoint", Config{Sites: f}, ConnectArgs{Site: "LAB", TLS: &no}, "", "", false, "clear text"},
+		{"tls off on another host", Config{Sites: f}, ConnectArgs{Site: "LAB", Host: "localhost", TLS: &no}, "", "", false, ""},
+		{"other host with the call's own credentials", Config{Sites: f}, ConnectArgs{Site: "LAB", Host: "localhost", User: "ME", Password: "mine"}, "ME", "mine", false, ""},
+		{"other host, call names only a user", Config{Sites: f}, ConnectArgs{Site: "LAB", Host: "localhost", User: "ME"}, "ME", "", false, ""},
+		{"default credentials, same host", Config{Host: "127.0.0.1", User: "D", Password: "dpw"}, ConnectArgs{}, "D", "dpw", false, ""},
+		{"default credentials, other host", Config{Host: "127.0.0.1", User: "D", Password: "dpw"}, ConnectArgs{Host: "localhost"}, "", "", false, ""},
+		{"default credentials, other port", Config{Host: "127.0.0.1", User: "D", Password: "dpw"}, ConnectArgs{Port: 12042}, "", "", false, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _ := newTestManager(t, tc.cfg)
+			got, err := m.resolveTarget(tc.args)
+			if tc.fail != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.fail) {
+					t.Fatalf("want error %q, got %v", tc.fail, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.user != tc.user || got.password != tc.pw || got.trustAny != tc.trustAny {
+				t.Errorf("got user=%q password=%q trustAny=%v, want %q %q %v", got.user, got.password, got.trustAny, tc.user, tc.pw, tc.trustAny)
+			}
+		})
+	}
+}
+
+// End to end: the password of a saved site never reaches a different host, and the audit
+// line of the connect names the endpoint that was really used.
+func TestSiteCredentialsNotSentElsewhere(t *testing.T) {
+	host, port := startFake(t)
+	f := &sites.File{Sites: []sites.Site{{Name: "LAB", Host: "127.0.0.2", Port: 1, User: "AGENT1", Password: "Fake-Pass-12345"}}}
+	m, audit := newTestManager(t, Config{Sites: f})
+	out, err := m.Connect(ctxT(t), ConnectArgs{Site: "LAB", Host: host, Port: port, TimeoutMs: 600})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.SignedOn {
+		t.Fatal("the saved password was typed into a sign-on on another host")
+	}
+	if !strings.Contains(audit.String(), `"port":`+strconv.Itoa(port)) || !strings.Contains(audit.String(), `"tls":false`) {
+		t.Errorf("audit line lacks the resolved port and tls: %s", audit.String())
 	}
 }
