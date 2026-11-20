@@ -117,11 +117,20 @@ func (t *sqlTool) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case tcell.KeyEsc:
 		if t.isRunning() {
-			if err := t.sess.Cancel(); err != nil {
-				t.status("cancel: " + err.Error())
-			} else {
-				t.status("Cancel sent; waiting for the host...")
-			}
+			// The cancel opens a side connection to the host: never on the UI goroutine.
+			t.status("Cancelling...")
+			go func() {
+				err := t.sess.Cancel()
+				t.a.post(func() {
+					t.vmu.Lock()
+					defer t.vmu.Unlock()
+					if err != nil {
+						t.status("cancel: " + err.Error())
+					} else {
+						t.status("Cancel sent; waiting for the host...")
+					}
+				})
+			}()
 			return nil
 		}
 		t.mu.Lock()

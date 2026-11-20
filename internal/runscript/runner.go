@@ -62,9 +62,13 @@ type Session struct {
 	opts Options
 	mu   sync.Mutex
 	db   *db.Client
-	aux  *db.Client // second database connection: reads spooled and stream files while a query is open
-	cmd  *rmtcmd.Client
-	rows *db.Rows
+	// cancelDB is s.db as Cancel sees it. Run holds mu for the whole statement, so Cancel
+	// cannot take mu: it reads this copy under its own lock.
+	cancelMu sync.Mutex
+	cancelDB *db.Client
+	aux      *db.Client // second database connection: reads spooled and stream files while a query is open
+	cmd      *rmtcmd.Client
+	rows     *db.Rows
 	// paseCCSID is true once the server job was given CCSID 37 for PASE.
 	paseCCSID bool
 }
@@ -97,17 +101,19 @@ func (s *Session) dropAll() {
 		}
 	}
 	s.db, s.aux = nil, nil
+	s.publishDB()
 	if s.cmd != nil {
 		_ = s.cmd.Close()
 		s.cmd = nil
 	}
 }
 
-// Cancel interrupts the running SQL statement (a side connection asks the host).
+// Cancel interrupts the running SQL statement (a side connection asks the host). It does not
+// wait for the statement: Run holds the session lock until the host answers.
 func (s *Session) Cancel() error {
-	s.mu.Lock()
-	c := s.db
-	s.mu.Unlock()
+	s.cancelMu.Lock()
+	c := s.cancelDB
+	s.cancelMu.Unlock()
 	if c == nil {
 		return errors.New("no SQL statement is running")
 	}
@@ -133,6 +139,7 @@ func (s *Session) database() (*db.Client, error) {
 		return nil, fmt.Errorf("database server: %w", err)
 	}
 	s.db = c
+	s.publishDB()
 	return c, nil
 }
 
@@ -225,6 +232,14 @@ func (s *Session) dropDB() {
 		_ = s.db.Close()
 	}
 	s.db, s.rows = nil, nil
+	s.publishDB()
+}
+
+// publishDB makes the current database connection visible to Cancel (the caller holds mu).
+func (s *Session) publishDB() {
+	s.cancelMu.Lock()
+	s.cancelDB = s.db
+	s.cancelMu.Unlock()
 }
 
 func (s *Session) page(data [][]*string) Result {
