@@ -86,11 +86,31 @@ func (s *Server) forget(c net.Conn) {
 	_ = c.Close()
 }
 
+// maxLine is the longest request line the server reads, before and after the hello. The
+// token and every request are tiny; an endless line must not be buffered.
+const maxLine = 4096
+
+// errLineTooLong is returned by readLine for a line longer than maxLine.
+var errLineTooLong = errors.New("viewer: request line too long")
+
+// readLine reads one newline-terminated line of at most maxLine bytes (the reader's buffer
+// size); a longer line is an error and the caller closes the connection.
+func readLine(r *bufio.Reader) ([]byte, error) {
+	line, err := r.ReadSlice('\n')
+	if errors.Is(err, bufio.ErrBufferFull) {
+		return nil, errLineTooLong
+	}
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), line...), nil
+}
+
 // serve runs one viewer connection: a hello with the token first, then list / watch
 // requests; a watch streams frames until the viewer sends another request or leaves.
 func (s *Server) serve(c net.Conn) {
 	defer s.forget(c)
-	r := bufio.NewReader(c)
+	r := bufio.NewReaderSize(c, maxLine)
 	var wmu sync.Mutex
 	send := func(m Msg) error {
 		data, err := json.Marshal(m)
@@ -105,7 +125,7 @@ func (s *Server) serve(c net.Conn) {
 	}
 	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
 	var hello Msg
-	if line, err := r.ReadBytes('\n'); err != nil || json.Unmarshal(line, &hello) != nil || hello.T != "hello" || hello.Token != s.token {
+	if line, err := readLine(r); err != nil || json.Unmarshal(line, &hello) != nil || hello.T != "hello" || hello.Token != s.token {
 		_ = send(Msg{T: "error", Text: "bad token"})
 		return
 	}
@@ -119,7 +139,7 @@ func (s *Server) serve(c net.Conn) {
 		}
 	}()
 	for {
-		line, err := r.ReadBytes('\n')
+		line, err := readLine(r)
 		if err != nil {
 			return
 		}

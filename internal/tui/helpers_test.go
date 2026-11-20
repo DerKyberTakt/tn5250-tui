@@ -24,7 +24,10 @@ type fakeEngine struct {
 	upd   func()
 	// onFeed, when set, runs inside Feed (e.g. to answer through send).
 	onFeed func(e *fakeEngine, b []byte)
+	failed error // what Failed reports
 }
+
+func (e *fakeEngine) Failed() error { e.mu.Lock(); defer e.mu.Unlock(); return e.failed }
 
 func (e *fakeEngine) Feed(b []byte) {
 	e.record(fmt.Sprintf("feed:%d", len(b)))

@@ -1,6 +1,7 @@
 package tn5250
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 )
@@ -69,7 +70,21 @@ type telnetCallbacks struct {
 	record func(rec []byte)
 	// environment gets the variables the host reports through NEW-ENVIRON (e.g. DEVNAME).
 	environment func(vars map[string]string)
+	// fail reports a host that broke the framing limits; the connection should be closed.
+	fail func(err error)
 }
+
+// Limits on what a host can make the client buffer. A 5250 record is at most a few tens of
+// KB; the subnegotiations the client reads (terminal type, NEW-ENVIRON) are tiny.
+const (
+	maxRecord = 1 << 20
+	maxSB     = 4096
+)
+
+var (
+	errRecordTooLong = errors.New("tn5250: the host sent an oversized record")
+	errSBTooLong     = errors.New("tn5250: the host sent an oversized telnet subnegotiation")
+)
 
 // telnetSession is the telnet layer for TN5250: option negotiation, IAC escaping and
 // END-OF-RECORD framing. Pure: bytes in, bytes out through callbacks.
@@ -79,6 +94,7 @@ type telnetSession struct {
 	pending []byte
 	rec     []byte
 	agreed  map[int]bool
+	failed  error // set when a limit was exceeded: all further input is dropped
 }
 
 func newTelnetSession(o telnetOptions, cb telnetCallbacks) *telnetSession {
@@ -89,11 +105,15 @@ func newTelnetSession(o telnetOptions, cb telnetCallbacks) *telnetSession {
 func (t *telnetSession) reset() {
 	t.pending = nil
 	t.rec = nil
+	t.failed = nil
 	t.agreed = map[int]bool{}
 }
 
 // feed takes bytes from the socket.
 func (t *telnetSession) feed(chunk []byte) {
+	if t.failed != nil {
+		return
+	}
 	t.pending = append(t.pending, chunk...)
 	t.parse()
 }
@@ -124,6 +144,15 @@ func (t *telnetSession) reply(b ...byte) {
 	t.cb.send(b, nil)
 }
 
+// abort records an exceeded limit, frees the buffers and tells the session once.
+func (t *telnetSession) abort(err error) {
+	t.failed = err
+	t.pending, t.rec = nil, nil
+	if t.cb.fail != nil {
+		t.cb.fail(err)
+	}
+}
+
 func (t *telnetSession) parse() {
 	buf := t.pending
 	i := 0
@@ -133,6 +162,10 @@ loop:
 		if b != IAC {
 			t.rec = append(t.rec, b)
 			i++
+			if len(t.rec) > maxRecord {
+				t.abort(errRecordTooLong)
+				return
+			}
 			continue
 		}
 		if i+1 >= len(buf) {
@@ -143,6 +176,10 @@ loop:
 		case IAC:
 			t.rec = append(t.rec, IAC)
 			i += 2
+			if len(t.rec) > maxRecord {
+				t.abort(errRecordTooLong)
+				return
+			}
 		case TelnetDO, TelnetDONT, TelnetWILL, TelnetWONT:
 			if i+2 >= len(buf) {
 				break loop
@@ -153,6 +190,10 @@ loop:
 			j := i + 2
 			for j+1 < len(buf) && !(buf[j] == IAC && buf[j+1] == TelnetSE) {
 				j++
+				if j-(i+2) > maxSB {
+					t.abort(errSBTooLong)
+					return
+				}
 			}
 			if j+1 >= len(buf) {
 				break loop

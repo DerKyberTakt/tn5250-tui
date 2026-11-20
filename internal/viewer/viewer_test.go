@@ -1,6 +1,10 @@
 package viewer
 
 import (
+	"bytes"
+	"errors"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -260,4 +264,44 @@ func TestTokenFiles(t *testing.T) {
 	if s := Describe(*live); s == "" {
 		t.Error("describe")
 	}
+}
+
+// A request line without a newline is not buffered without limit: before and after the hello
+// the server closes the connection once the line passes maxLine.
+func TestOversizedRequestLineClosesConnection(t *testing.T) {
+	srv, err := Listen("tok", newFake())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	flood := func(t *testing.T, c net.Conn) {
+		t.Helper()
+		_ = c.SetDeadline(time.Now().Add(3 * time.Second))
+		junk := bytes.Repeat([]byte("a"), 2*maxLine)
+		_, _ = c.Write(junk) // may fail once the server has closed
+		if _, err := io.Copy(io.Discard, c); err != nil && !errors.Is(err, io.EOF) {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatal("the server kept the connection open after an oversized line")
+			}
+		}
+	}
+	t.Run("before the hello", func(t *testing.T) {
+		c, err := net.Dial("tcp", srv.Addr())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		flood(t, c)
+	})
+	t.Run("after the hello", func(t *testing.T) {
+		c, err := net.Dial("tcp", srv.Addr())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		if _, err := c.Write([]byte(`{"t":"hello","token":"tok"}` + "\n")); err != nil {
+			t.Fatal(err)
+		}
+		flood(t, c)
+	})
 }

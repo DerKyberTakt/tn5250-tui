@@ -383,6 +383,8 @@ type session struct {
 	ready   bool
 	pending [][]byte
 
+	failure atomic.Value // string: why the engine refused the host's data, when it did
+
 	dead bool // the socket ended (guarded by App.mu)
 
 	// Workstation name retries. template is the name as configured (variables expanded),
@@ -423,6 +425,9 @@ func (s *session) onData(b []byte) {
 }
 
 func (s *session) onClosed(err error) {
+	if why, _ := s.failure.Load().(string); why != "" {
+		err = errors.New(why)
+	}
 	s.app.dropped(s, err)
 }
 
@@ -456,12 +461,25 @@ func (s *session) setLink(l Link) bool {
 // feed hands socket bytes to the session's engine (under the App mutex).
 func (a *App) feed(s *session, b []byte) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	t := s.tab
 	if t.sess != s || t.engine == nil {
+		a.mu.Unlock()
 		return
 	}
 	t.engine.Feed(b)
+	var failed error
+	if f, ok := t.engine.(interface{ Failed() error }); ok {
+		failed = f.Failed()
+	}
+	a.mu.Unlock()
+	if failed != nil {
+		// The host broke a framing limit (a record that never ends, say): close the link;
+		// dropped then shows why.
+		s.failure.Store(failed.Error())
+		if l := s.getLink(); l != nil {
+			_ = l.Close()
+		}
+	}
 }
 
 // dropped is called when the socket ends (host closed it, or an error).

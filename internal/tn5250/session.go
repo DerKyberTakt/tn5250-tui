@@ -124,6 +124,12 @@ func New(o Options, ev Events) (*Session, error) {
 	}, telnetCallbacks{
 		send:   s.emitSend,
 		record: s.onRecord,
+		fail: func(err error) {
+			if s.ev.Error != nil {
+				fn := s.ev.Error
+				s.pending = append(s.pending, func() { fn(err) })
+			}
+		},
 		environment: func(vars map[string]string) {
 			if name := vars["DEVNAME"]; name != "" {
 				s.deviceName = name
@@ -175,6 +181,14 @@ func (s *Session) notify() {
 	if s.ev.Update != nil {
 		s.pending = append(s.pending, s.ev.Update)
 	}
+}
+
+// Failed reports why the connection must be closed (the host broke a framing limit, such as
+// a record or subnegotiation that never ends), or nil. Feed drops everything after that.
+func (s *Session) Failed() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.telnet.failed
 }
 
 // Feed takes bytes from the socket.

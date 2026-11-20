@@ -334,3 +334,21 @@ func TestRedrawCoalesces(t *testing.T) {
 		t.Fatalf("next request gave %d total", got)
 	}
 }
+
+// An engine that refuses the host's data (an oversized record) gets its connection closed and
+// the tab says why.
+func TestEngineFailureClosesTheLink(t *testing.T) {
+	r := newRig(t, nil)
+	r.connect(t, "example.test")
+	eng := r.engine()
+	opts, link := r.d.last()
+	eng.mu.Lock()
+	eng.failed = errors.New("the host sent an oversized record")
+	eng.mu.Unlock()
+	opts.OnData([]byte("x"))
+	if !link.isClosed() {
+		t.Fatal("the link stayed open")
+	}
+	opts.OnClosed(nil)
+	waitFor(t, "the reason in the notice", func() bool { return strings.Contains(r.noticeText(), "oversized record") })
+}

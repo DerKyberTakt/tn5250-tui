@@ -119,6 +119,7 @@ func (e *engine) Press(action string)    { e.s.Press(tn5250.Action(action)) }
 func (e *engine) Type(text string)       { e.s.Type(text) }
 func (e *engine) SetCursor(row, col int) { e.s.SetCursor(row, col) }
 func (e *engine) Reset()                 { e.s.Reset() }
+func (e *engine) Failed() error          { return e.s.Failed() }
 func (e *engine) OIA(connected bool) tui.OIA {
 	o := e.s.OIA(connected)
 	return tui.OIA{
