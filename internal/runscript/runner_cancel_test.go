@@ -1,6 +1,8 @@
 package runscript
 
 import (
+	"github.com/DerKyberTakt/tn5250-tui/internal/hostserver/db/dbtest"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,4 +26,40 @@ func TestCancelDoesNotWaitForARunningStatement(t *testing.T) {
 		t.Fatal("Cancel blocked behind the running statement")
 	}
 	s.mu.Unlock()
+}
+
+// A host that refuses the sign-on is asked once: later statements on the session fail at once
+// without another sign-on, so a stale password cannot disable the profile.
+func TestRefusedSignonIsNotRetried(t *testing.T) {
+	d, err := dbtest.New("127.0.0.1:0", "TESTUSER", "SECRET1", 2, dbHandler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	s := New(Options{Host: "127.0.0.1", DatabasePort: d.Port(), CommandPort: 1, User: "testuser", Password: "WRONG"})
+	t.Cleanup(s.Close)
+	signons := func() int {
+		n := 0
+		for _, id := range d.Seen() {
+			if id == 0x7001 {
+				n++
+			}
+		}
+		return n
+	}
+	if _, err := s.Run(Classify("select 1 from t"), 10); err == nil || !strings.Contains(err.Error(), "password is not correct") {
+		t.Fatalf("first run: %v", err)
+	}
+	first := signons()
+	if first == 0 {
+		t.Fatal("the first run did not reach the host")
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := s.Run(Classify("select 1 from t"), 10); err == nil || !strings.Contains(err.Error(), "not signing on again") {
+			t.Fatalf("run %d: %v", i+2, err)
+		}
+	}
+	if n := signons(); n != first {
+		t.Fatalf("%d sign-on attempts after the first refusal (had %d)", n-first, first)
+	}
 }

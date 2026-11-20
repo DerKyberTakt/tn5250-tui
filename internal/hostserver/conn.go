@@ -200,20 +200,31 @@ var signonMessages = map[uint32]string{
 	0x00040000: "general security error on the host",
 }
 
-// SignonError turns a sign-on return code into a plain message.
-func SignonError(rc uint32) error {
+// SignonRefused is the error of a sign-on the host turned down (wrong or expired password,
+// disabled profile, ...). Callers that must not retry a sign-on test for it with errors.As.
+type SignonRefused struct {
+	RC  uint32
+	msg string
+}
+
+func (e *SignonRefused) Error() string { return e.msg }
+
+// SignonError turns a sign-on return code into a plain message (a *SignonRefused).
+func SignonError(rc uint32) error { return &SignonRefused{RC: rc, msg: signonText(rc)} }
+
+func signonText(rc uint32) string {
 	if m, ok := signonMessages[rc]; ok {
-		return fmt.Errorf("sign-on refused: %s", m)
+		return fmt.Sprintf("sign-on refused: %s", m)
 	}
 	switch rc >> 16 {
 	case 0x0001:
-		return fmt.Errorf("sign-on refused: protocol error (return code %08X)", rc)
+		return fmt.Sprintf("sign-on refused: protocol error (return code %08X)", rc)
 	case 0x0003:
-		return fmt.Errorf("sign-on refused: password problem (return code %08X)", rc)
+		return fmt.Sprintf("sign-on refused: password problem (return code %08X)", rc)
 	case 0x0004:
-		return fmt.Errorf("sign-on refused by the host server (return code %08X); check that the server job can start", rc)
+		return fmt.Sprintf("sign-on refused by the host server (return code %08X); check that the server job can start", rc)
 	case 0x0005:
-		return fmt.Errorf("sign-on refused by an exit program on the host (return code %08X)", rc)
+		return fmt.Sprintf("sign-on refused by an exit program on the host (return code %08X)", rc)
 	}
-	return fmt.Errorf("sign-on refused (return code %08X)", rc)
+	return fmt.Sprintf("sign-on refused (return code %08X)", rc)
 }

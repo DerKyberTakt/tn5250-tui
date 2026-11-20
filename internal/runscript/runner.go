@@ -71,6 +71,9 @@ type Session struct {
 	rows     *db.Rows
 	// paseCCSID is true once the server job was given CCSID 37 for PASE.
 	paseCCSID bool
+	// refused is the first sign-on the host turned down: no statement tries again on this
+	// session, because every attempt with a wrong password counts toward disabling the profile.
+	refused error
 }
 
 // New prepares a session; nothing connects until Run.
@@ -173,6 +176,9 @@ func (s *Session) command() (*rmtcmd.Client, error) {
 func (s *Session) Run(st Classified, block int) (Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.refused != nil {
+		return Result{Statement: st}, fmt.Errorf("not signing on again (%v): correct the password in the site, then open the SQL tab again", s.refused)
+	}
 	start := time.Now()
 	had := s.db != nil || s.cmd != nil
 	out, err := s.runOnce(st, block)
@@ -185,6 +191,10 @@ func (s *Session) Run(st Classified, block int) (Result, error) {
 		if err == nil {
 			out.Messages = append(out.Messages, "reconnected: the host-server connection had been lost")
 		}
+	}
+	var refused *hs.SignonRefused
+	if errors.As(err, &refused) {
+		s.refused = err
 	}
 	out.Statement = st
 	out.Elapsed = time.Since(start)
