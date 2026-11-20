@@ -72,6 +72,7 @@ func (cl *Client) read() (Msg, error) {
 	if err := json.Unmarshal(line, &m); err != nil {
 		return Msg{}, err
 	}
+	m.Text, m.Sessions = Sanitize(m.Text), sanitizeInfo(m.Sessions)
 	return m, nil
 }
 

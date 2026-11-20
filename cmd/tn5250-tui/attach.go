@@ -48,10 +48,10 @@ func runAttach(args []string) int {
 	}
 	if *list {
 		for _, e := range entries {
-			fmt.Println(viewer.Describe(e))
+			fmt.Println(viewer.Sanitize(viewer.Describe(e)))
 			cl, err := viewer.Dial(e.Addr, e.Token, 2*time.Second)
 			if err != nil {
-				fmt.Println("   ", err)
+				fmt.Println("   ", viewer.Sanitize(err.Error()))
 				continue
 			}
 			ss, _ := cl.Sessions()
@@ -61,7 +61,7 @@ func runAttach(args []string) int {
 				if s.Connected {
 					state = "connected"
 				}
-				fmt.Printf("    %-4s %-30s %-12s %s seq %d %s\n", s.Session, s.Host, s.Device, state, s.Seq, s.Inhibited)
+				fmt.Printf("    %-4s %-30s %-12s %s seq %d %s\n", viewer.Sanitize(s.Session), viewer.Sanitize(s.Host), viewer.Sanitize(s.Device), state, s.Seq, viewer.Sanitize(s.Inhibited))
 			}
 		}
 		return 0
@@ -81,7 +81,7 @@ func runAttach(args []string) int {
 	}
 	cl, err := viewer.Dial(entry.Addr, entry.Token, 3*time.Second)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "tn5250-tui attach:", err)
+		fmt.Fprintln(os.Stderr, "tn5250-tui attach:", viewer.Sanitize(err.Error()))
 		return 1
 	}
 	defer cl.Close()
@@ -91,7 +91,7 @@ func runAttach(args []string) int {
 	}
 	v := viewer.New(cl, label)
 	if err := v.Run(fs.Arg(0)); err != nil {
-		fmt.Fprintln(os.Stderr, "tn5250-tui attach:", err)
+		fmt.Fprintln(os.Stderr, "tn5250-tui attach:", viewer.Sanitize(err.Error()))
 		return 1
 	}
 	return 0

@@ -164,3 +164,37 @@ func (f Frame) TUIOIA() tui.OIA {
 	return tui.OIA{Connected: o.Connected, InputInhibited: o.InputInhibited, Insert: o.Insert, MessageWaiting: o.MessageWaiting,
 		DeviceName: o.DeviceName, Message: o.Message, QueuedKeys: o.QueuedKeys}
 }
+
+// Sanitize removes the control characters (C0, DEL and C1) from a string that came from a
+// host and is about to be printed to a terminal: an escape sequence in a device name must
+// not reach the user's terminal. Printable text, including non-ASCII letters, is kept.
+func Sanitize(s string) string {
+	clean := true
+	for _, r := range s {
+		if isControl(r) {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if isControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func isControl(r rune) bool { return r < 0x20 || (r >= 0x7f && r <= 0x9f) }
+
+// sanitizeInfo cleans every string of a session list.
+func sanitizeInfo(in []SessionInfo) []SessionInfo {
+	for i := range in {
+		in[i].Session, in[i].Host = Sanitize(in[i].Session), Sanitize(in[i].Host)
+		in[i].Device, in[i].Since = Sanitize(in[i].Device), Sanitize(in[i].Since)
+		in[i].Inhibited = Sanitize(in[i].Inhibited)
+	}
+	return in
+}

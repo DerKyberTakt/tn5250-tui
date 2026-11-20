@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -304,4 +305,38 @@ func TestOversizedRequestLineClosesConnection(t *testing.T) {
 		}
 		flood(t, c)
 	})
+}
+
+// A host-set device name with terminal escapes reaches the listing without control characters.
+func TestHostStringsAreSanitized(t *testing.T) {
+	if got := Sanitize("QPADEV\x1b]0;pwned\x07\u009b2JX\x7f é"); got != "QPADEV]0;pwned2JX é" {
+		t.Errorf("Sanitize: %q", got)
+	}
+	src := newFake()
+	src.snap.Rows = 24
+	srv, err := Listen("tok", &evilSource{fakeSource: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	cl, err := Dial(srv.Addr(), "tok", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	ss, err := cl.Sessions()
+	if err != nil || len(ss) != 1 {
+		t.Fatalf("%v %v", err, ss)
+	}
+	for _, v := range []string{ss[0].Host, ss[0].Device, ss[0].Inhibited, cl.sessions[0].Device} {
+		if strings.ContainsAny(v, "\x1b\x07\u009b") {
+			t.Errorf("control character survived: %q", v)
+		}
+	}
+}
+
+type evilSource struct{ *fakeSource }
+
+func (e *evilSource) Sessions() []SessionInfo {
+	return []SessionInfo{{Session: "s1", Host: "h\x1b[2J", Device: "DEV\x1b]0;x\x07", Inhibited: "\u009b", Connected: true}}
 }
