@@ -55,6 +55,7 @@ func localCommand(line string) *exec.Cmd {
 // localPane is the output view plus the state of the command running into it.
 type localPane struct {
 	view    *tview.TextView
+	vmu     sync.Mutex // the view's text is written and read under it (the view itself is not safe for that)
 	mu      sync.Mutex
 	running *exec.Cmd
 	shown   bool
@@ -89,7 +90,19 @@ func (a *App) localShown() bool {
 }
 
 // localText is the pane's current text (tests and :dump).
-func (a *App) localText() string { return a.local.view.GetText(true) }
+func (a *App) localText() string {
+	a.local.vmu.Lock()
+	defer a.local.vmu.Unlock()
+	return a.local.view.GetText(true)
+}
+
+// localAppend adds one line to the pane and scrolls to it.
+func (a *App) localAppend(line string) {
+	a.local.vmu.Lock()
+	defer a.local.vmu.Unlock()
+	fmt.Fprintln(a.local.view, line)
+	a.local.view.ScrollToEnd()
+}
 
 // runLocal is `:!<line>`: the command runs in the background and its output streams into
 // the pane; one command at a time.
@@ -107,8 +120,7 @@ func (a *App) runLocal(line string) string {
 	a.local.running = cmd
 	a.local.mu.Unlock()
 	a.showLocal(true)
-	fmt.Fprintf(a.local.view, "$ %s\n", line)
-	a.local.view.ScrollToEnd()
+	a.localAppend("$ " + line)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		a.localDone(err)
@@ -133,8 +145,7 @@ func (a *App) copyLocal(r io.Reader) {
 	for sc.Scan() {
 		text := sc.Text()
 		a.post(func() {
-			fmt.Fprintln(a.local.view, tview.Escape(text))
-			a.local.view.ScrollToEnd()
+			a.localAppend(tview.Escape(text))
 		})
 	}
 }
@@ -148,8 +159,7 @@ func (a *App) localDone(err error) {
 		return
 	}
 	a.post(func() {
-		fmt.Fprintln(a.local.view, tview.Escape("["+err.Error()+"]"))
-		a.local.view.ScrollToEnd()
+		a.localAppend(tview.Escape("[" + err.Error() + "]"))
 	})
 }
 
@@ -170,7 +180,9 @@ func (a *App) localCmd(arg string) string {
 	case "off", "hide":
 		a.showLocal(false)
 	case "clear":
+		a.local.vmu.Lock()
 		a.local.view.Clear()
+		a.local.vmu.Unlock()
 	default:
 		return "usage: local [on|off|clear]"
 	}

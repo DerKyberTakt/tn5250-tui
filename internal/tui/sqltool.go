@@ -37,6 +37,7 @@ type sqlTool struct {
 	out    *tview.TextView
 	sess   *runscript.Session
 
+	vmu      sync.Mutex // held while a result is drawn into table and out; readers on other goroutines (tests) take it too
 	mu       sync.Mutex
 	running  bool
 	fetching bool
@@ -243,6 +244,8 @@ func summarize(st runscript.Statement, r runscript.Result) string {
 
 // show puts a result on the grid and the status line (UI goroutine).
 func (t *sqlTool) show(st runscript.Statement, r runscript.Result, err error, earlier []string, last bool, n, of int) {
+	t.vmu.Lock()
+	defer t.vmu.Unlock()
 	var b strings.Builder
 	for _, e := range earlier {
 		b.WriteString(e + "\n")
@@ -328,6 +331,8 @@ func (t *sqlTool) fetchMore() {
 	go func() {
 		res, err := t.sess.Fetch(sqlBlock)
 		t.a.post(func() {
+			t.vmu.Lock()
+			defer t.vmu.Unlock()
 			t.mu.Lock()
 			t.fetching = false
 			t.more = err == nil && res.More

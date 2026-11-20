@@ -3,7 +3,10 @@
 // space, control bytes to a hollow box, unmapped characters encode to X'6F' ('?').
 package ebcdic
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // Unprintable is what a byte that is not a printable character shows as (hollow box, as on ACS).
 const Unprintable = '□'
@@ -18,10 +21,15 @@ type CodePage struct {
 	encode map[rune]byte
 }
 
-var cache = map[int]*CodePage{}
+var (
+	cacheMu sync.Mutex
+	cache   = map[int]*CodePage{}
+)
 
 // Get returns the code page for a CCSID, or an error when it is not in the tables.
 func Get(ccsid int) (*CodePage, error) {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
 	if cp, ok := cache[ccsid]; ok {
 		return cp, nil
 	}
