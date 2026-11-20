@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -74,6 +76,31 @@ func traceBytes(dir string, b []byte) string {
 type auditor struct {
 	mu   sync.Mutex
 	outs []io.Writer
+	// file is the --audit file, when one was asked for: it must stay writable. A failed write
+	// latches in failed, and check refuses every action from then on.
+	file   *os.File
+	failed error
+}
+
+// check reports why the agent must not act: the --audit file could not be written, or was
+// removed or replaced since it was opened. nil when no audit file was asked for.
+func (a *auditor) check() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.file == nil {
+		return nil
+	}
+	if a.failed == nil {
+		fi, err := a.file.Stat()
+		pi, err2 := os.Stat(a.file.Name())
+		if err != nil || err2 != nil || !os.SameFile(fi, pi) {
+			a.failed = errors.New("the audit file was removed or replaced")
+		}
+	}
+	if a.failed != nil {
+		return fmt.Errorf("refusing to act: the audit log cannot be written (%v); restart the server with a writable --audit file", a.failed)
+	}
+	return nil
 }
 
 // AuditEntry is one line of the audit log. Args never hold a password and never hold text
@@ -100,7 +127,9 @@ func (a *auditor) Log(e AuditEntry) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, w := range a.outs {
-		_, _ = w.Write(b)
+		if _, err := w.Write(b); err != nil && a.file != nil && w == io.Writer(a.file) && a.failed == nil {
+			a.failed = err
+		}
 	}
 }
 

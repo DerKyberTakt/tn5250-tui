@@ -51,6 +51,7 @@ func NewManager(cfg Config) (*Manager, error) {
 			return nil, fmt.Errorf("audit file: %w", err)
 		}
 		m.file = f
+		m.audit.file = f
 		m.audit.outs = append(m.audit.outs, f)
 	}
 	return m, nil
@@ -410,6 +411,9 @@ func (m *Manager) liveCount() int {
 
 // Connect opens a session, waits for the first unlocked screen and, when asked, signs on.
 func (m *Manager) Connect(ctx context.Context, a ConnectArgs) (out ConnectOut, err error) {
+	if err := m.audit.check(); err != nil {
+		return out, err
+	}
 	var s *session
 	var tlsUsed bool
 	defer func() {
@@ -825,6 +829,9 @@ func (m *Manager) finish(s *session, settled *bool) (ScreenOut, error) {
 // Press presses a key (or several times) and, for a key that sends to the host, waits for the
 // host to settle.
 func (m *Manager) Press(ctx context.Context, a PressArgs) (out ScreenOut, err error) {
+	if err := m.audit.check(); err != nil {
+		return out, err
+	}
 	s, err := m.live(a.Session)
 	if err != nil {
 		return out, err
@@ -931,6 +938,9 @@ type TypeArgs struct {
 
 // Type types text into a field (or at the cursor) and optionally presses a key.
 func (m *Manager) Type(ctx context.Context, a TypeArgs) (out ScreenOut, err error) {
+	if err := m.audit.check(); err != nil {
+		return out, err
+	}
 	s, err := m.live(a.Session)
 	if err != nil {
 		return out, err
@@ -1041,6 +1051,9 @@ type FillArgs struct {
 // Fill clears and fills several fields, then optionally presses a key. Every field is
 // resolved and checked before anything is typed.
 func (m *Manager) Fill(ctx context.Context, a FillArgs) (out ScreenOut, err error) {
+	if err := m.audit.check(); err != nil {
+		return out, err
+	}
 	s, err := m.live(a.Session)
 	if err != nil {
 		return out, err
@@ -1195,6 +1208,11 @@ type DisconnectOut struct {
 
 // Disconnect ends a session.
 func (m *Manager) Disconnect(ctx context.Context, a DisconnectArgs) (out DisconnectOut, err error) {
+	if a.Signoff { // typing SIGNOFF is an action; closing the connection is always allowed
+		if err := m.audit.check(); err != nil {
+			return out, err
+		}
+	}
 	s, err := m.get(a.Session)
 	if err != nil {
 		return out, err

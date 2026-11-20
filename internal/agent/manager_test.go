@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -546,4 +548,48 @@ func TestSiteCredentialsNotSentElsewhere(t *testing.T) {
 	if !strings.Contains(audit.String(), `"port":`+strconv.Itoa(port)) || !strings.Contains(audit.String(), `"tls":false`) {
 		t.Errorf("audit line lacks the resolved port and tls: %s", audit.String())
 	}
+}
+
+// When --audit was asked for and the log can no longer be written, the agent stops acting
+// instead of running unaudited.
+func TestAuditFailureRefusesActions(t *testing.T) {
+	host, port := startFake(t)
+	connect := func(t *testing.T, file string) (*Manager, string) {
+		t.Helper()
+		m, err := NewManager(Config{AuditFile: file, AuditWriter: &lockedBuf{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(m.Close)
+		out, err := m.Connect(ctxT(t), ConnectArgs{Host: host, Port: port, TimeoutMs: 600})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m, out.Session
+	}
+	t.Run("file removed", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "audit.jsonl")
+		m, sess := connect(t, file)
+		if _, err := m.Press(ctxT(t), PressArgs{Session: sess, Key: "tab"}); err != nil {
+			t.Fatalf("with a healthy log the press runs: %v", err)
+		}
+		if err := os.Remove(file); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := m.Press(ctxT(t), PressArgs{Session: sess, Key: "tab"}); err == nil || !strings.Contains(err.Error(), "refusing to act") {
+			t.Fatalf("press after the log was removed: %v", err)
+		}
+		if _, err := m.Type(ctxT(t), TypeArgs{Session: sess, Text: "x"}); err == nil || !strings.Contains(err.Error(), "refusing to act") {
+			t.Fatalf("type after the log was removed: %v", err)
+		}
+	})
+	t.Run("write fails", func(t *testing.T) {
+		if _, err := os.Stat("/dev/full"); err != nil {
+			t.Skip("no /dev/full")
+		}
+		m, sess := connect(t, "/dev/full") // the connect itself ran; its record failed
+		if _, err := m.Press(ctxT(t), PressArgs{Session: sess, Key: "tab"}); err == nil || !strings.Contains(err.Error(), "refusing to act") {
+			t.Fatalf("press after a failed audit write: %v", err)
+		}
+	})
 }
