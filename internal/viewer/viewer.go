@@ -30,7 +30,16 @@ type Viewer struct {
 	notice   string
 	stop     func()
 	stopped  atomic.Bool
+	ended    atomic.Bool
+
+	// ExitOnClose, when positive, ends Run that long after the watched session closed (the
+	// viewer says so first), so a viewer never sits on a dead session. Zero keeps it open.
+	ExitOnClose time.Duration
 }
+
+// Ended reports whether Run returned because the watched session closed (ExitOnClose), not
+// because the user left.
+func (v *Viewer) Ended() bool { return v.ended.Load() }
 
 // New builds a viewer on an open client. label names the server (shown on the OIA line).
 func New(cl *Client, label string) *Viewer {
@@ -117,9 +126,21 @@ func (v *Viewer) watchCurrent() {
 				v.notice = "stream ended: " + err.Error()
 			} else if v.haveFrm {
 				v.notice = "session " + s.Session + " closed (r reloads, Tab next, q quits)"
+				if v.ExitOnClose > 0 {
+					v.notice = fmt.Sprintf("session %s ended; closing in %d s", s.Session, int(v.ExitOnClose.Round(time.Second)/time.Second))
+				}
 			}
 			v.mu.Unlock()
 		})
+		if err == nil && v.ExitOnClose > 0 && !v.stopped.Load() {
+			time.AfterFunc(v.ExitOnClose, func() {
+				if v.stopped.Load() {
+					return
+				}
+				v.ended.Store(true)
+				v.Stop()
+			})
+		}
 	}()
 }
 

@@ -20,11 +20,12 @@ import (
 
 // fakeSource holds one session whose screen the test changes.
 type fakeSource struct {
-	mu   sync.Mutex
-	snap tn5250.Snapshot
-	oia  tn5250.OIA
-	subs []chan struct{}
-	gone bool
+	mu    sync.Mutex
+	snap  tn5250.Snapshot
+	oia   tn5250.OIA
+	subs  []chan struct{}
+	gone  bool
+	ended []string
 }
 
 func newFake() *fakeSource {
@@ -58,6 +59,13 @@ func (f *fakeSource) Frame(session string) (Frame, bool) {
 		return Frame{}, false
 	}
 	return EncodeFrame("s1", f.snap, f.oia), true
+}
+
+func (f *fakeSource) End(session string, signoff bool) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ended = append(f.ended, session)
+	return signoff, nil
 }
 
 func (f *fakeSource) Subscribe(session string) (<-chan struct{}, func(), bool) {
@@ -339,4 +347,119 @@ type evilSource struct{ *fakeSource }
 
 func (e *evilSource) Sessions() []SessionInfo {
 	return []SessionInfo{{Session: "s1", Host: "h\x1b[2J", Device: "DEV\x1b]0;x\x07", Inhibited: "\u009b", Connected: true}}
+}
+
+// A viewer with ExitOnClose leaves by itself once the watched session ended, and says that
+// it was the session, not the user, that ended it.
+func TestViewerExitsWhenTheSessionEnds(t *testing.T) {
+	src := newFake()
+	srv, err := Listen("tok", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	cl, err := Dial(srv.Addr(), "tok", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	sim := tcell.NewSimulationScreen("UTF-8")
+	if err := sim.Init(); err != nil {
+		t.Fatal(err)
+	}
+	sim.SetSize(80, 25)
+	v := New(cl, "test")
+	v.ExitOnClose = 150 * time.Millisecond
+	v.SetScreen(sim)
+	done := make(chan error, 1)
+	go func() { done <- v.Run("s1") }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		v.mu.Lock()
+		have := v.haveFrm
+		v.mu.Unlock()
+		if have {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no frame")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	src.close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the viewer stayed open on a closed session")
+	}
+	if !v.Ended() {
+		t.Error("Ended() must be true after an exit caused by the session closing")
+	}
+}
+
+// Without ExitOnClose the viewer stays (the behaviour before), and a user's quit is not "ended".
+func TestViewerStaysWithoutExitOnClose(t *testing.T) {
+	src := newFake()
+	srv, err := Listen("tok", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	cl, err := Dial(srv.Addr(), "tok", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	sim := tcell.NewSimulationScreen("UTF-8")
+	if err := sim.Init(); err != nil {
+		t.Fatal(err)
+	}
+	sim.SetSize(80, 25)
+	v := New(cl, "test")
+	v.SetScreen(sim)
+	done := make(chan error, 1)
+	go func() { done <- v.Run("s1") }()
+	time.Sleep(200 * time.Millisecond)
+	src.close()
+	select {
+	case <-done:
+		t.Fatal("the viewer left although ExitOnClose is off")
+	case <-time.After(400 * time.Millisecond):
+	}
+	v.Stop()
+	<-done
+	if v.Ended() {
+		t.Error("a user's quit must not count as ended")
+	}
+}
+
+// The end request reaches the source with the token, and a wrong token cannot send it.
+func TestEndRequest(t *testing.T) {
+	src := newFake()
+	srv, err := Listen("tok", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	cl, err := Dial(srv.Addr(), "tok", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	signedOff, err := cl.End("s1", true)
+	if err != nil || !signedOff {
+		t.Fatalf("end: signedOff=%v err=%v", signedOff, err)
+	}
+	src.mu.Lock()
+	got := append([]string(nil), src.ended...)
+	src.mu.Unlock()
+	if len(got) != 1 || got[0] != "s1" {
+		t.Fatalf("ended = %v", got)
+	}
+	if _, err := Dial(srv.Addr(), "nope", time.Second); err == nil {
+		t.Fatal("a wrong token was accepted")
+	}
 }
