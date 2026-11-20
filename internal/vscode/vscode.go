@@ -258,9 +258,12 @@ func Import(m map[string]any) Result {
 var hexColour = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 // Apply merges r into f: the found defaults replace the file's, the sites are upserted by
-// name keeping an existing site's password (and its user when the import has none). It
-// returns how many sites were added and updated.
-func Apply(f *sites.File, r Result) (added, updated int) {
+// name keeping an existing site's password (and its user when the import has none). A site
+// whose host, port or TLS setting changes (or that turns certificate checking off, or
+// changes its user) loses its saved password: it must not follow the site to a new
+// endpoint. It returns how many sites were added and updated, and one line per site whose
+// password was dropped, saying what changed.
+func Apply(f *sites.File, r Result) (added, updated int, cleared []string) {
 	d := f.EffectiveDefaults()
 	if r.Found.ScreenSize {
 		d.ScreenSize = r.Defaults.ScreenSize
@@ -293,7 +296,12 @@ func Apply(f *sites.File, r Result) (added, updated int) {
 			if s.User == "" {
 				s.User = old.User
 			}
-			if s.User != old.User {
+			if what := endpointChange(f, old, s); len(what) > 0 {
+				note := "no saved password to clear"
+				if old.Password != "" {
+					note = "saved password cleared"
+				}
+				cleared = append(cleared, fmt.Sprintf("site %s changed: %s; %s", old.Name, strings.Join(what, ", "), note))
 				s.Password = ""
 			}
 			updated++
@@ -302,7 +310,37 @@ func Apply(f *sites.File, r Result) (added, updated int) {
 		}
 		f.Upsert(s)
 	}
-	return added, updated
+	return added, updated, cleared
+}
+
+// endpointChange lists what an import changes about where a site's credentials would go.
+func endpointChange(f *sites.File, old, nw sites.Site) []string {
+	var what []string
+	if !strings.EqualFold(old.Host, nw.Host) {
+		what = append(what, fmt.Sprintf("host %s -> %s", old.Host, nw.Host))
+	}
+	op := f.Complete(sites.Site{Port: old.Port, TLS: old.TLS}).Port
+	np := f.Complete(sites.Site{Port: nw.Port, TLS: nw.TLS}).Port
+	if op != np {
+		what = append(what, fmt.Sprintf("port %d -> %d", op, np))
+	}
+	if old.TLS != nw.TLS {
+		what = append(what, fmt.Sprintf("tls %s -> %s", onOff(old.TLS), onOff(nw.TLS)))
+	}
+	if !old.TrustAnyCertificate && nw.TrustAnyCertificate {
+		what = append(what, "certificate check off")
+	}
+	if nw.User != old.User {
+		what = append(what, fmt.Sprintf("user %s -> %s", old.User, nw.User))
+	}
+	return what
+}
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
 }
 
 // Summary is a one-line account of an import for the status line.

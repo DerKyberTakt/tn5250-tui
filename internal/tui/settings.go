@@ -144,7 +144,7 @@ func (a *App) importVSCode(path string) string {
 	}
 	old := a.opts.Sites.Defaults
 	oldSites := append([]sites.Site(nil), a.opts.Sites.Sites...)
-	added, updated := vscode.Apply(a.opts.Sites, r)
+	added, updated, cleared := vscode.Apply(a.opts.Sites, r)
 	if err := a.opts.Sites.Save(); err != nil {
 		a.opts.Sites.Defaults, a.opts.Sites.Sites = old, oldSites
 		return "save: " + err.Error()
@@ -155,7 +155,11 @@ func (a *App) importVSCode(path string) string {
 	a.mu.Lock()
 	a.sizeOv, a.cpOv = "", 0
 	a.mu.Unlock()
-	return vscode.Summary(r, added, updated) + " from " + from
+	msg := vscode.Summary(r, added, updated) + " from " + from
+	if len(cleared) > 0 {
+		msg += "; " + strings.Join(cleared, "; ")
+	}
+	return msg
 }
 
 // saveDefaults stores d in the sites file and applies it. The file is only changed in memory

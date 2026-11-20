@@ -104,18 +104,21 @@ func TestApplyKeepsPasswords(t *testing.T) {
 		{Name: "same", Host: "PUB400.COM", User: "OLD", Password: "keep"},
 	}, Defaults: &sites.Defaults{TraceFile: "t.log", SourceHighlight: true}}
 	r := Result{Sites: []sites.Site{
-		{Name: "PUB", Host: "PUB400.COM", Port: 992}, // no user: keeps ALEX/secret
+		{Name: "PUB", Host: "pub400.com", Port: 23, ScreenSize: "27x132"}, // no user, same endpoint: keeps ALEX/secret
 		{Name: "same", Host: "PUB400.COM", User: "NEW"},
 		{Name: "new", Host: "127.0.0.1"},
 	}}
 	r.Defaults.Colors = map[string]string{"green": "#00ff00"}
 	r.Found.Colors = true
-	added, updated := Apply(f, r)
+	added, updated, cleared := Apply(f, r)
+	if len(cleared) != 1 || !strings.Contains(cleared[0], "user OLD -> NEW") {
+		t.Errorf("only the user change should be reported: %v", cleared)
+	}
 	if added != 1 || updated != 2 {
 		t.Errorf("added %d updated %d", added, updated)
 	}
 	s, _ := f.Find("pub")
-	if s.User != "ALEX" || s.Password != "secret" || s.Port != 992 {
+	if s.User != "ALEX" || s.Password != "secret" || s.ScreenSize != "27x132" {
 		t.Errorf("pub: %+v", s)
 	}
 	s, _ = f.Find("same")
@@ -154,5 +157,42 @@ func TestImportFileAndCandidates(t *testing.T) {
 	t.Setenv(EnvSettings, "")
 	if c := Candidates(); len(c) < 4 || !strings.HasSuffix(c[0], filepath.Join("Code", "User", "settings.json")) {
 		t.Errorf("platform candidates: %v", c)
+	}
+}
+
+func TestApplyClearsPasswordWhenEndpointChanges(t *testing.T) {
+	saved := func() *sites.File {
+		return &sites.File{Sites: []sites.Site{
+			{Name: "A", Host: "example.test", Port: 992, TLS: true, User: "U", Password: "pw"},
+			{Name: "B", Host: "example.test", Port: 992, TLS: true, User: "U", Password: "pw"},
+			{Name: "C", Host: "example.test", Port: 992, TLS: true, User: "U", Password: "pw"},
+			{Name: "D", Host: "example.test", Port: 992, TLS: true, User: "U", Password: "pw"},
+			{Name: "E", Host: "example.test", Port: 992, TLS: true, User: "U", Password: "pw"},
+		}}
+	}
+	f := saved()
+	r := Result{Sites: []sites.Site{
+		{Name: "A", Host: "127.0.0.1", Port: 992, TLS: true},                               // host
+		{Name: "B", Host: "example.test", Port: 23, TLS: true},                             // port
+		{Name: "C", Host: "example.test", Port: 992, TLS: false},                           // tls off
+		{Name: "D", Host: "EXAMPLE.test", Port: 992, TLS: true, ScreenSize: "27x132"},      // same endpoint
+		{Name: "E", Host: "example.test", Port: 992, TLS: true, TrustAnyCertificate: true}, // trust off
+	}}
+	_, _, cleared := Apply(f, r)
+	for _, n := range []string{"A", "B", "C", "E"} {
+		if s, _ := f.Find(n); s.Password != "" {
+			t.Errorf("site %s kept its password after the endpoint changed", n)
+		}
+	}
+	if s, _ := f.Find("D"); s.Password != "pw" {
+		t.Errorf("site D lost its password without an endpoint change")
+	}
+	if len(cleared) != 4 {
+		t.Fatalf("want one line per changed site, got %v", cleared)
+	}
+	for i, want := range []string{"host example.test -> 127.0.0.1", "port 992 -> 23", "tls on -> off", "certificate check off"} {
+		if !strings.Contains(cleared[i], want) || !strings.Contains(cleared[i], "password cleared") {
+			t.Errorf("line %d: %q lacks %q", i, cleared[i], want)
+		}
 	}
 }

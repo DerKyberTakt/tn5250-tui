@@ -11,7 +11,8 @@ import (
 
 // runImport is `tn5250-tui import`: the VS Code extension's (and the desktop app's)
 // settings.json into the sites file. Passwords never come across (VS Code keeps them in
-// its secret store); an existing site keeps its password.
+// its secret store); an existing site keeps its password unless the import changes where it
+// points (host, port, TLS), in which case the password is dropped and the change is printed.
 func runImport(args []string) int {
 	fs := flag.NewFlagSet("tn5250-tui import", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -41,7 +42,7 @@ func runImport(args []string) int {
 		fmt.Fprintf(os.Stderr, "tn5250-tui import: sites file %s: %v\n", sites.Path(), err)
 		return 1
 	}
-	added, updated := vscode.Apply(f, r)
+	added, updated, cleared := vscode.Apply(f, r)
 	fmt.Println("from:", path)
 	for _, s := range r.Sites {
 		fmt.Printf("  site %-20s %s:%d", s.Name, s.Host, s.WithDefaults().Port)
@@ -55,6 +56,9 @@ func runImport(args []string) int {
 	}
 	for _, n := range r.Notes {
 		fmt.Println("  skipped:", n)
+	}
+	for _, c := range cleared {
+		fmt.Println("  " + c)
 	}
 	fmt.Println(vscode.Summary(r, added, updated))
 	if *dry {
