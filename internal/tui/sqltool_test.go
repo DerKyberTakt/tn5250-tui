@@ -63,7 +63,23 @@ func fakeHostServers(t *testing.T) {
 	t.Cleanup(func() { runscriptOptions = old })
 }
 
-func (t *sqlTool) outText() string { return t.out.GetText(true) }
+func (t *sqlTool) outText() string {
+	t.vmu.Lock()
+	defer t.vmu.Unlock()
+	return t.out.GetText(true)
+}
+
+func (t *sqlTool) rowCount() int {
+	t.vmu.Lock()
+	defer t.vmu.Unlock()
+	return t.table.GetRowCount()
+}
+
+func (t *sqlTool) cellText(r, c int) string {
+	t.vmu.Lock()
+	defer t.vmu.Unlock()
+	return t.table.GetCell(r, c).Text
+}
 
 func TestSQLToolTab(t *testing.T) {
 	fakeHostServers(t)
@@ -116,11 +132,11 @@ func TestSQLToolTab(t *testing.T) {
 	// F5 on a query: rows on the grid, a NULL as "-", more to fetch.
 	tool.editor.SetText("select n from t\n", false)
 	tool.handleKey(key(tcell.KeyF5, 0, tcell.ModNone))
-	waitFor(t, "rows", func() bool { return tool.table.GetRowCount() == 1+sqlBlock && !tool.isRunning() })
-	if got := tool.table.GetCell(0, 0).Text; got != " N " {
+	waitFor(t, "rows", func() bool { return tool.rowCount() == 1+sqlBlock && !tool.isRunning() })
+	if got := tool.cellText(0, 0); got != " N " {
 		t.Fatalf("header %q", got)
 	}
-	if got := tool.table.GetCell(2, 1).Text; got != " - " {
+	if got := tool.cellText(2, 1); got != " - " {
 		t.Fatalf("null cell %q", got)
 	}
 	if out := tool.outText(); !strings.Contains(out, "SQL (SQL keyword SELECT): 100 rows, PgDn") {
@@ -131,9 +147,9 @@ func TestSQLToolTab(t *testing.T) {
 	if r.a.focusedPrimitive() != tool.table {
 		t.Fatal("Tab should move to the grid")
 	}
-	tool.table.Select(tool.table.GetRowCount()-1, 0)
+	tool.table.Select(tool.rowCount()-1, 0)
 	tool.handleKey(key(tcell.KeyPgDn, 0, tcell.ModNone))
-	waitFor(t, "more rows", func() bool { return tool.table.GetRowCount() == 1+150 })
+	waitFor(t, "more rows", func() bool { return tool.rowCount() == 1+150 })
 	if out := tool.outText(); !strings.Contains(out, "150 rows so far") || strings.Contains(out, "PgDn") {
 		t.Fatalf("status after fetch %q", out)
 	}
@@ -152,7 +168,7 @@ func TestSQLToolTab(t *testing.T) {
 			t.Errorf("status lacks %q:\n%s", want, out)
 		}
 	}
-	if got := tool.table.GetCell(1, 0).Text; got != " qsh says hi " {
+	if got := tool.cellText(1, 0); got != " qsh says hi " {
 		t.Fatalf("qsh output %q", got)
 	}
 	// A failure stops the script and says why.

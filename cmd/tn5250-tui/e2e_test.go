@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +11,32 @@ import (
 	"github.com/DerKyberTakt/tn5250-tui/internal/tui"
 	"github.com/gdamore/tcell/v2"
 )
+
+// lockedSim serialises the simulation screen's drawing with the tests' reads of it: tcell
+// hands out its live cell buffer from GetContents, which the event loop redraws concurrently.
+type lockedSim struct {
+	tcell.SimulationScreen
+	mu sync.Mutex
+}
+
+func (l *lockedSim) Show() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.SimulationScreen.Show()
+}
+
+func (l *lockedSim) SetSize(w, h int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.SimulationScreen.SetSize(w, h)
+}
+
+func (l *lockedSim) GetContents() ([]tcell.SimCell, int, int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	cells, w, h := l.SimulationScreen.GetContents()
+	return append([]tcell.SimCell(nil), cells...), w, h
+}
 
 func simText(sim tcell.SimulationScreen) string {
 	cells, w, h := sim.GetContents()
@@ -59,7 +86,7 @@ func TestEndToEnd(t *testing.T) {
 		Target:        host.Addr(),
 		ScreenSize:    "27x132",
 	})
-	sim := tcell.NewSimulationScreen("UTF-8")
+	sim := &lockedSim{SimulationScreen: tcell.NewSimulationScreen("UTF-8")}
 	if err := sim.Init(); err != nil {
 		t.Fatal(err)
 	}

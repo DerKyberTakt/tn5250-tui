@@ -90,6 +90,9 @@ type Options struct {
 	// Lenient records a mismatch or timeout but keeps replaying instead of closing the
 	// connection. Useful for demos where the client negotiates differently from the capture.
 	Lenient bool
+	// Logf receives log lines (default log.Printf). Unlike setting Server.Logf after the
+	// start, it is safe against the server's own goroutines.
+	Logf func(format string, args ...any)
 }
 
 // Mismatch describes one place where the client did not send what the capture expected.
@@ -148,7 +151,11 @@ func StartWith(listenAddr string, capture Capture, opt Options) (*Server, error)
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{Logf: log.Printf, ln: ln, cap: capture, opt: opt, conns: map[net.Conn]struct{}{}}
+	logf := opt.Logf
+	if logf == nil {
+		logf = log.Printf
+	}
+	s := &Server{Logf: logf, ln: ln, cap: capture, opt: opt, conns: map[net.Conn]struct{}{}}
 	s.wg.Add(1)
 	go s.accept()
 	return s, nil

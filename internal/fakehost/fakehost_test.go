@@ -23,11 +23,11 @@ func loadTestCapture(t *testing.T) Capture {
 
 func start(t *testing.T, cp Capture, opt Options) *Server {
 	t.Helper()
+	opt.Logf = func(string, ...any) {}
 	s, err := StartWith("127.0.0.1:0", cp, opt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Logf = func(string, ...any) {}
 	t.Cleanup(func() { s.Close() })
 	return s
 }

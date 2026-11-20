@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -8,13 +9,39 @@ import (
 
 func simScreen(t *testing.T, w, h int) tcell.SimulationScreen {
 	t.Helper()
-	s := tcell.NewSimulationScreen("UTF-8")
+	s := &lockedSim{SimulationScreen: tcell.NewSimulationScreen("UTF-8")}
 	if err := s.Init(); err != nil {
 		t.Fatal(err)
 	}
 	s.SetSize(w, h)
 	t.Cleanup(s.Fini)
 	return s
+}
+
+// lockedSim serialises the simulation screen's drawing with the tests' reads of it: tcell
+// hands out its live cell buffer from GetContents, which the event loop redraws concurrently.
+type lockedSim struct {
+	tcell.SimulationScreen
+	mu sync.Mutex
+}
+
+func (l *lockedSim) Show() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.SimulationScreen.Show()
+}
+
+func (l *lockedSim) SetSize(w, h int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.SimulationScreen.SetSize(w, h)
+}
+
+func (l *lockedSim) GetContents() ([]tcell.SimCell, int, int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	cells, w, h := l.SimulationScreen.GetContents()
+	return append([]tcell.SimCell(nil), cells...), w, h
 }
 
 func cellAt(s tcell.SimulationScreen, x, y int) (rune, tcell.Color, tcell.AttrMask) {
