@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -568,6 +569,9 @@ func TestAuditFailureRefusesActions(t *testing.T) {
 		return m, out.Session
 	}
 	t.Run("file removed", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows does not let an open file be removed; the replaced-file check is covered by the Linux CI leg")
+		}
 		file := filepath.Join(t.TempDir(), "audit.jsonl")
 		m, sess := connect(t, file)
 		if _, err := m.Press(ctxT(t), PressArgs{Session: sess, Key: "tab"}); err != nil {
