@@ -291,6 +291,11 @@ func (a *App) screenSource() (Snapshot, bool) {
 func (a *App) oiaSource() (string, string, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.tool != nil {
+		// A tool tab (SQL) has no 5250 session: its line names the tool, not a disconnected
+		// screen that asks for Enter.
+		return "SQL  " + a.tool.name + "  database host server", "", false
+	}
 	var o OIA
 	row, col := 0, 0
 	if a.engine != nil {

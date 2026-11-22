@@ -106,6 +106,10 @@ func TestSQLToolTab(t *testing.T) {
 	if infos[1].Title != "SQL box" || !infos[1].Connected {
 		t.Fatalf("tab info %+v", infos[1])
 	}
+	// The SQL tab has no 5250 session; its status line must not say Disconnected.
+	if left, _, alert := r.a.oiaSource(); strings.Contains(left, "Disconnected") || strings.Contains(left, "reconnect") || alert || !strings.HasPrefix(left, "SQL  box") {
+		t.Fatalf("SQL tab status %q alert=%v", left, alert)
+	}
 	tool := r.a.tool
 	if r.a.focusedPrimitive() != tool.editor {
 		t.Fatal("the editor should have the focus")
