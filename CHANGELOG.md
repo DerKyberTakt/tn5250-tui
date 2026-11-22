@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.1 - unreleased
+## 0.2.1 - 2026-11-22
 - Agent sign-on results: `connect` says `signed_on: true` only when the host accepted the sign-on. A refused sign-on is an error with the host's message, the connection is closed, and the server does not try that password again for that user and host until the site's password changes or the server restarts (every refused attempt counts toward disabling the profile). Too many sessions for the user (CPF1220) is its own error.
 - Agent sessions end cleanly: when the MCP server exits (the agent's client closed), it types SIGNOFF in every session that shows a command line, so the host does not keep the job; every session gets a disconnect line in the audit log, also one it could not sign off. Closed sessions leave the session list a minute after they closed.
 - `attach --wait` starts a viewer before the agent connects and watches the first session that comes; `--follow` goes back to waiting when the session ends; `--exit-on-close N` closes a viewer N seconds after its session ended; `--end s1` (or `--end all`) signs off and closes agent sessions from outside. A viewer whose agent server exits shows Disconnected instead of a frozen Connected screen, and with `--follow` waits for the next session.
