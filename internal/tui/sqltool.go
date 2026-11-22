@@ -57,8 +57,8 @@ func newSQLTool(a *App, tab *conn, site sites.Site, name, naming string) *sqlToo
 	t := &sqlTool{a: a, tab: tab, name: name}
 	t.sess = runscript.New(runscriptOptions(site, naming))
 	t.editor = tview.NewTextArea().SetWrap(false)
-	t.editor.SetPlaceholder("SQL, CL commands and Qshell lines, one statement per line or ended with ;   F5 runs the statement at the cursor, F9 the whole script")
-	t.editor.SetBorder(true).SetTitle(fmt.Sprintf(" %s  F5 run  F9 run all  Tab results  F3 close ", name)).SetTitleAlign(tview.AlignLeft)
+	t.editor.SetPlaceholder("SQL, CL commands and Qshell lines, one statement per line or ended with ;   Ctrl+R (F5) runs the statement at the cursor or the selection, Ctrl+A then Ctrl+R (or F9) the whole script")
+	t.editor.SetBorder(true).SetTitle(fmt.Sprintf(" %s  Ctrl+R run  Ctrl+A select all  F9 run all  Tab results  F3 close ", name)).SetTitleAlign(tview.AlignLeft)
 	t.editor.SetBackgroundColor(colBlack)
 	t.editor.SetTextStyle(tcell.StyleDefault.Background(colBlack).Foreground(colGreen))
 	t.table = tview.NewTable().SetFixed(1, 0).SetSelectable(true, false).SetBorders(false)
@@ -103,7 +103,21 @@ func (t *sqlTool) isRunning() bool {
 // handleKey is the tool's own key table (the App handles the global keys before this).
 func (t *sqlTool) handleKey(ev *tcell.EventKey) *tcell.EventKey {
 	switch ev.Key() {
-	case tcell.KeyF5:
+	case tcell.KeyCtrlR:
+		// Ctrl+R runs the statement at the cursor, or the selection when there is one: Ctrl+A
+		// then Ctrl+R runs the whole script. Enter and Ctrl+Enter only break the line.
+		t.runSelected()
+		return nil
+	case tcell.KeyCtrlA:
+		t.mu.Lock()
+		onTable := t.onTable
+		t.mu.Unlock()
+		if onTable {
+			return ev
+		}
+		t.editor.Select(0, len(t.editor.GetText()))
+		return nil
+	case tcell.KeyF5: // run the statement at the cursor, on every terminal
 		t.runAtCursor()
 		return nil
 	case tcell.KeyF9:
@@ -172,7 +186,7 @@ func (t *sqlTool) statements() []runscript.Statement {
 	return runscript.Split(t.editor.GetText())
 }
 
-// runAtCursor is F5: the statement the cursor is in (or the last one above it).
+// runAtCursor is Ctrl+R without a selection (F5): the statement the cursor is in (or the last one above it).
 func (t *sqlTool) runAtCursor() {
 	row, _, _, _ := t.editor.GetCursor()
 	st, ok := runscript.At(t.statements(), row)
@@ -183,7 +197,22 @@ func (t *sqlTool) runAtCursor() {
 	t.run([]runscript.Statement{st})
 }
 
-// runAll is F9: every statement in order, stopping at the first failure.
+// runSelected is Ctrl+R: the statements in the selection, else the one at the cursor.
+func (t *sqlTool) runSelected() {
+	if !t.editor.HasSelection() {
+		t.runAtCursor()
+		return
+	}
+	text, _, _ := t.editor.GetSelection()
+	list := runscript.Split(text)
+	if len(list) == 0 {
+		t.status("Nothing to run in the selection.")
+		return
+	}
+	t.run(list)
+}
+
+// runAll is F9 (or Ctrl+A, Ctrl+R): every statement in order, stopping at the first failure.
 func (t *sqlTool) runAll() {
 	all := t.statements()
 	if len(all) == 0 {

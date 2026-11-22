@@ -88,8 +88,8 @@ Type SQL, CL commands and Qshell lines in one script. Each statement runs as wha
 
 | Key | In the SQL tab |
 | --- | --- |
-| F5 | Run the statement at the cursor |
-| F9 | Run the whole script, stopping at the first failure |
+| Ctrl+R, F5 | Run the statement at the cursor; with a selection, the statements in it |
+| Ctrl+A, then Ctrl+R | Run the whole script (F9 too), stopping at the first failure |
 | Tab / Esc | Keyboard to the result grid and back |
 | PgDn on the last row | Fetch the next 100 rows of a query |
 | Esc while running | Cancel the SQL statement |

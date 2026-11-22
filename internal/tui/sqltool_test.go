@@ -133,9 +133,13 @@ func TestSQLToolTab(t *testing.T) {
 	}
 	r.a.RunCommand("tab 2")
 
-	// F5 on a query: rows on the grid, a NULL as "-", more to fetch.
+	// Ctrl+Enter only breaks the line: it must not run anything.
 	tool.editor.SetText("select n from t\n", false)
-	tool.handleKey(key(tcell.KeyF5, 0, tcell.ModNone))
+	if tool.handleKey(key(tcell.KeyEnter, 0, tcell.ModCtrl)) == nil || tool.isRunning() {
+		t.Fatal("Ctrl+Enter must reach the editor and run nothing")
+	}
+	// Ctrl+R on a query: rows on the grid, a NULL as "-", more to fetch.
+	tool.handleKey(key(tcell.KeyCtrlR, 0, tcell.ModCtrl))
 	waitFor(t, "rows", func() bool { return tool.rowCount() == 1+sqlBlock && !tool.isRunning() })
 	if got := tool.cellText(0, 0); got != " N " {
 		t.Fatalf("header %q", got)
@@ -162,9 +166,14 @@ func TestSQLToolTab(t *testing.T) {
 		t.Fatal("Esc should go back to the editor")
 	}
 
-	// F9 runs a mixed script: an insert, a CL command, a Qshell line (last result on the grid).
+	// Ctrl+A then Ctrl+R runs a mixed script: an insert, a CL command, a Qshell line (last
+	// result on the grid).
 	tool.editor.SetText("insert into t values (1);\nSNDMSG MSG('x') TOUSR(QSYSOPR)\nls /tmp\n", false)
-	tool.handleKey(key(tcell.KeyF9, 0, tcell.ModNone))
+	tool.handleKey(key(tcell.KeyCtrlA, 0, tcell.ModCtrl))
+	if sel, _, _ := tool.editor.GetSelection(); !strings.Contains(sel, "ls /tmp") || !strings.HasPrefix(sel, "insert") {
+		t.Fatalf("Ctrl+A selected %q", sel)
+	}
+	tool.handleKey(key(tcell.KeyCtrlR, 0, tcell.ModCtrl))
 	waitFor(t, "script done", func() bool { return !tool.isRunning() && strings.Contains(tool.outText(), "statement 3 of 3") })
 	out := tool.outText()
 	for _, want := range []string{"2 rows affected", "CPC2301", "QSH (shell command ls): 1 rows", "statement 3 of 3"} {
@@ -177,7 +186,7 @@ func TestSQLToolTab(t *testing.T) {
 	}
 	// A failure stops the script and says why.
 	tool.editor.SetText("BADCMD\nselect n from t\n", false)
-	tool.handleKey(key(tcell.KeyF9, 0, tcell.ModNone))
+	tool.handleKey(key(tcell.KeyF9, 0, tcell.ModNone)) // F9: the whole script
 	waitFor(t, "failure", func() bool { return !tool.isRunning() && strings.Contains(tool.outText(), "CPF0006") })
 	if out := tool.outText(); !strings.Contains(out, "CL (CL verb BADCMD) failed") || strings.Contains(out, "statement 2 of 2") {
 		t.Fatalf("failure status %q", out)
