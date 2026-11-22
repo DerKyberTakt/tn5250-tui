@@ -647,3 +647,19 @@ func TestEndClosesAndAudits(t *testing.T) {
 		t.Error("ending an unknown session must fail")
 	}
 }
+
+// A server that exits writes a disconnect line for every live session, also for one it could
+// not sign off because no command line was on the screen (here the sign-on display).
+func TestCloseAuditsSessionsWithoutCommandLine(t *testing.T) {
+	host, port := startFake(t)
+	m, audit := newTestManager(t, Config{})
+	signon := false
+	if _, err := m.Connect(ctxT(t), ConnectArgs{Host: host, Port: port, ScreenSize: "27x132", Signon: &signon, TimeoutMs: 10000}); err != nil {
+		t.Fatal(err)
+	}
+	m.Close()
+	log := audit.String()
+	if !strings.Contains(log, `"disconnect"`) || !strings.Contains(log, `no command line on screen`) || !strings.Contains(log, `"signed_off":false`) {
+		t.Fatalf("server exit left no disconnect line for a session without a command line:\n%s", log)
+	}
+}

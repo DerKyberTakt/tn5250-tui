@@ -76,9 +76,17 @@ func (m *Manager) Close() {
 	// the screen, so the host does not keep the job and the user's device session.
 	var typed []*session
 	for _, s := range all {
-		if alive, _ := s.isConnected(); alive && s.typeSignoff() {
+		alive, _ := s.isConnected()
+		if !alive {
+			continue
+		}
+		// Every live session gets its audit line, also one closed without a sign-off (no
+		// command line on its screen): the log must show that it was closed and how.
+		if s.typeSignoff() {
 			typed = append(typed, s)
 			m.record(s, "disconnect", map[string]any{"signoff": true, "signed_off": true, "reason": "server exit"}, 0, nil)
+		} else {
+			m.record(s, "disconnect", map[string]any{"signoff": true, "signed_off": false, "reason": "server exit, no command line on screen"}, 0, nil)
 		}
 	}
 	if len(typed) > 0 {
