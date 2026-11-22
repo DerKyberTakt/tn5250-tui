@@ -29,6 +29,8 @@ type Viewer struct {
 	haveFrm  bool
 	notice   string
 	stop     func()
+	gen      int  // counts watches: a stream that was replaced or stopped must not act
+	gone     bool // the server behind the watched session went away
 	stopped  atomic.Bool
 	ended    atomic.Bool
 
@@ -98,6 +100,8 @@ func (v *Viewer) watchCurrent() {
 		v.stop = nil
 	}
 	v.haveFrm = false
+	v.gen++
+	gen := v.gen
 	if len(v.sessions) == 0 {
 		v.notice = "no sessions on " + v.label + " (r reloads, q quits)"
 		v.mu.Unlock()
@@ -120,19 +124,32 @@ func (v *Viewer) watchCurrent() {
 			})
 		}
 		err := <-errc
+		v.mu.Lock()
+		current := v.gen == gen // false: the user switched sessions or reloaded
+		v.mu.Unlock()
+		if !current {
+			return
+		}
+		secs := int(v.ExitOnClose.Round(time.Second) / time.Second)
 		v.post(func() {
 			v.mu.Lock()
-			if err != nil {
-				v.notice = "stream ended: " + err.Error()
-			} else if v.haveFrm {
+			switch {
+			case err != nil:
+				// The server went away (the agent's MCP server exited): nothing more will come.
+				v.gone = true
+				v.notice = "agent server stopped (" + err.Error() + "); q or Esc closes"
+				if v.ExitOnClose > 0 {
+					v.notice = fmt.Sprintf("agent server stopped; closing in %d s", secs)
+				}
+			case v.haveFrm:
 				v.notice = "session " + s.Session + " closed (r reloads, Tab next, q quits)"
 				if v.ExitOnClose > 0 {
-					v.notice = fmt.Sprintf("session %s ended; closing in %d s", s.Session, int(v.ExitOnClose.Round(time.Second)/time.Second))
+					v.notice = fmt.Sprintf("session %s ended; closing in %d s", s.Session, secs)
 				}
 			}
 			v.mu.Unlock()
 		})
-		if err == nil && v.ExitOnClose > 0 && !v.stopped.Load() {
+		if v.ExitOnClose > 0 && !v.stopped.Load() {
 			time.AfterFunc(v.ExitOnClose, func() {
 				if v.stopped.Load() {
 					return
@@ -173,6 +190,10 @@ func (v *Viewer) key(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case tcell.KeyTab:
 		v.mu.Lock()
+		if v.gone {
+			v.mu.Unlock()
+			return nil
+		}
 		if n := len(v.sessions); n > 0 {
 			v.cur = (v.cur + 1) % n
 		}
@@ -185,6 +206,12 @@ func (v *Viewer) key(ev *tcell.EventKey) *tcell.EventKey {
 			v.Stop()
 			return nil
 		case 'r', 'R':
+			v.mu.Lock()
+			gone := v.gone
+			v.mu.Unlock()
+			if gone {
+				return nil
+			}
 			go v.reload()
 			return nil
 		}
@@ -213,6 +240,9 @@ func (v *Viewer) oiaSource() (string, string, bool) {
 	if v.haveFrm {
 		o = v.frame.TUIOIA()
 		row, col = v.frame.CursorRow, v.frame.CursorCol
+	}
+	if v.gone {
+		o.Connected = false // the last screen stays readable, but nothing behind it is live
 	}
 	left, right := tui.FormatOIA(o, row, col, v.notice)
 	left = fmt.Sprintf("WATCH %s %d/%d  ", name, v.cur+1, len(v.sessions)) + left

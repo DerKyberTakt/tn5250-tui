@@ -436,6 +436,73 @@ func TestViewerStaysWithoutExitOnClose(t *testing.T) {
 	}
 }
 
+// The agent's server exits while a session is watched: with ExitOnClose the viewer leaves
+// (attach --follow then waits for the next server); without it, it says so and shows Disconnected.
+func TestViewerWhenTheServerGoesAway(t *testing.T) {
+	for _, exit := range []bool{true, false} {
+		src := newFake()
+		srv, err := Listen("tok", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cl, err := Dial(srv.Addr(), "tok", time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sim := tcell.NewSimulationScreen("UTF-8")
+		if err := sim.Init(); err != nil {
+			t.Fatal(err)
+		}
+		sim.SetSize(80, 25)
+		v := New(cl, "test")
+		if exit {
+			v.ExitOnClose = 150 * time.Millisecond
+		}
+		v.SetScreen(sim)
+		done := make(chan error, 1)
+		go func() { done <- v.Run("s1") }()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			v.mu.Lock()
+			have := v.haveFrm
+			v.mu.Unlock()
+			if have {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("no frame")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		srv.Close() // the server process is gone: the stream breaks, no "closed" message
+		if exit {
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the viewer stayed open after its server went away")
+			}
+			if !v.Ended() {
+				t.Error("Ended() must be true so attach --follow waits for the next session")
+			}
+		} else {
+			deadline = time.Now().Add(5 * time.Second)
+			for {
+				left, _, alert := v.oiaSource()
+				if strings.Contains(left, "Disconnected") && strings.Contains(left, "agent server stopped") && alert {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("status after the server left: %q", left)
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			v.Stop()
+			<-done
+		}
+		cl.Close()
+	}
+}
+
 // The end request reaches the source with the token, and a wrong token cannot send it.
 func TestEndRequest(t *testing.T) {
 	src := newFake()
